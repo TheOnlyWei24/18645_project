@@ -315,28 +315,33 @@ void kernel
     det2_out3[j] = 0.0;
   }
 
-  kernel_sub(m, n, k, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, a, b, d, e, g, h);
-  kernel_square_add(m, n, k, a, b, c, d, e, f, g, h, i);
-  printf("matrix: %f, %f, %f, %f, %f, %f, %f, %f, %f\n", a[0], b[0], c[0], d[0], e[0], f[0], g[0], h[0], i[0]);
-  kernel_det2(m, n, k, a, b, c, d, e, f, g, h, i, det2_out1, det2_out2, det2_out3);
-
   __m256d reg0, reg1, reg2, reg3, reg4, reg5;
-  
-  reg0 = _mm256_load_pd(&det2_out1[0]);
-  reg1 = _mm256_load_pd(&det2_out1[4]);
-  reg2 = _mm256_load_pd(&det2_out2[0]);
-  reg3 = _mm256_load_pd(&det2_out2[4]);
-  reg4 = _mm256_load_pd(&det2_out3[0]);
-  reg5 = _mm256_load_pd(&det2_out3[4]);
+  int idx = 0;
 
-  reg0 = _mm256_add_pd(reg0, reg2);
-  reg1 = _mm256_add_pd(reg1, reg3);
-  reg0 = _mm256_add_pd(reg0, reg4);
-  reg1 = _mm256_add_pd(reg1, reg5);
+  for (int p = 0; p < k; p++){
+    idx = m*n*p;
+    kernel_sub(m, n, k, &Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], &Dx[idx], &Dy[idx], \
+              &a[idx], &b[idx], &d[idx], &e[idx], &g[idx], &h[idx]);
+    kernel_square_add(m, n, k, &a[idx], &b[idx], &c[idx], &d[idx], &e[idx], &f[idx], &g[idx], &h[idx], &i[idx]);
+    kernel_det2(m, n, k, &a[idx], &b[idx], &c[idx], &d[idx], &e[idx], &f[idx], &g[idx], &h[idx], &i[idx], \
+               &det2_out1[idx], &det2_out2[idx], &det2_out3[idx]);
 
-  // Store det3_out
-  _mm256_store_pd(&det3_out[0], reg0);
-  _mm256_store_pd(&det3_out[4], reg1);
+    reg0 = _mm256_load_pd(&det2_out1[idx]);
+    reg1 = _mm256_load_pd(&det2_out1[idx+4]);
+    reg2 = _mm256_load_pd(&det2_out2[idx]);
+    reg3 = _mm256_load_pd(&det2_out2[idx+4]);
+    reg4 = _mm256_load_pd(&det2_out3[idx]);
+    reg5 = _mm256_load_pd(&det2_out3[idx+4]);
+
+    reg0 = _mm256_add_pd(reg0, reg2);
+    reg1 = _mm256_add_pd(reg1, reg3);
+    reg0 = _mm256_add_pd(reg0, reg4);
+    reg1 = _mm256_add_pd(reg1, reg5);
+
+    // Store det3_out
+    _mm256_store_pd(&det3_out[idx], reg0);
+    _mm256_store_pd(&det3_out[idx+4], reg1);
+  }
 
   free(a);
   free(b);

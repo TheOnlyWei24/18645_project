@@ -42,7 +42,7 @@ int main(){
   // Kernel dim
   int m = 1;
   int n = 8;
-  int k = 1;
+  int k = 512;
   
   //create memory aligned buffers
   posix_memalign((void**) &Ax, 64, m * n * k * sizeof(double));
@@ -70,6 +70,7 @@ int main(){
     Cx[i] = 6;
     Cy[i] = 7;
   }
+
   //initialize D
   for (int i = 0; i < k * m * n; i++){
     Dx[i] = 1;
@@ -93,7 +94,7 @@ int main(){
   // }
 
   //printf("%d\t %d\t %d\t %lf %d\n", m, n, k, (2.0*m*n*k)/((double)(t1-t0)*MAX_FREQ/BASE_FREQ), correct);
-  printf("det3_out = %f, %f\n", det3_out[0], det3_out[4]);
+  printf("det3_out = %f, %f, %f, %f, %f, %f, %f, %f\n", det3_out[0], det3_out[2], det3_out[4], det3_out[6], det3_out[8], det3_out[10], det3_out[12], det3_out[15]);
 
   free(Ax);
   free(Ay);
@@ -104,7 +105,6 @@ int main(){
   free(Dx);
   free(Dy);
   free(det3_out);
-
 
   return 0;
 }
