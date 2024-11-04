@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <math.h>
 #include "immintrin.h"
+#include <time.h>
 
 #define MAX_FREQ 3.4
 #define BASE_FREQ 2.4
+#define RUNS 100000
 
 //timing routine for reading the time stamp counter
 static __inline__ unsigned long long rdtsc(void) {
@@ -29,6 +31,37 @@ void kernel
  double*     restrict det3_out
  );
 
+void check
+(
+ int               m,
+ int               n,
+ int               k,
+ double*     restrict Ax,
+ double*     restrict Ay,
+ double*     restrict Bx,
+ double*     restrict By,
+ double*     restrict Cx,
+ double*     restrict Cy,
+ double*     restrict Dx,
+ double*     restrict Dy,
+ double*     restrict res
+ ){
+  double a, b, c, d, e, f, g, h, i;
+
+  for (int p = 0; p < m*n*k; p++){
+    a = Ax[p] - Dx[p];
+    b = Ay[p] - Dy[p];
+    d = Bx[p] - Dx[p];
+    e = By[p] - Dy[p];
+    g = Cx[p] - Dx[p];
+    h = Cy[p] - Dy[p];
+    c = a*a + b*b;
+    f = d*d + e*e;
+    i = g*g + h*h;
+    res[p] = a*(e*i - f*h) + b*(f*g - d*i) + c*(d*h - e*g);
+  }
+ }
+
 int main(){
 
   double *Ax, *Ay;
@@ -36,13 +69,14 @@ int main(){
   double *Cx, *Cy;
   double *Dx, *Dy;
   double *det3_out;
+  double *res;
 
   unsigned long long t0, t1;
 
   // Kernel dim
   int m = 1;
   int n = 8;
-  int k = 512;
+  int k = 256;
   
   //create memory aligned buffers
   posix_memalign((void**) &Ax, 64, m * n * k * sizeof(double));
@@ -54,47 +88,55 @@ int main(){
   posix_memalign((void**) &Dx, 64, m * n * k * sizeof(double));
   posix_memalign((void**) &Dy, 64, m * n * k * sizeof(double));
   posix_memalign((void**) &det3_out, 64, m * n * k * sizeof(double));
+  posix_memalign((void**) &res, 64, m * n * k * sizeof(double));
 
+  srand((unsigned int)time(NULL));
+  double scale = 64;
+  double shift = 32;
   //initialize A
   for (int i = 0; i < k * m * n; i++){
-    Ax[i] = 2;
-    Ay[i] = 3;
+    Ax[i] = (((double) rand())/ ((double) RAND_MAX))*scale - shift;
+    Ay[i] = (((double) rand())/ ((double) RAND_MAX))*scale - shift;
   }
   //initialize B
   for (int i = 0; i < k * m * n; i++){
-    Bx[i] = 4;
-    By[i] = 5;
+    Bx[i] = (((double) rand())/ ((double) RAND_MAX))*scale - shift;
+    By[i] = (((double) rand())/ ((double) RAND_MAX))*scale - shift;
   }
   //initialize C
   for (int i = 0; i < k * m * n; i++){
-    Cx[i] = 6;
-    Cy[i] = 7;
+    Cx[i] = (((double) rand())/ ((double) RAND_MAX))*scale - shift;
+    Cy[i] = (((double) rand())/ ((double) RAND_MAX))*scale - shift;
   }
 
   //initialize D
   for (int i = 0; i < k * m * n; i++){
-    Dx[i] = 1;
-    Dy[i] = 1;
+    Dx[i] = (((double) rand())/ ((double) RAND_MAX))*scale - shift;
+    Dy[i] = (((double) rand())/ ((double) RAND_MAX))*scale - shift;
   }
   //initialize output
   for (int i = 0; i < k * m * n; i++){
     det3_out[i] = 0.0;
+    res[i] = 0.0;
   }
 
-  t0 = rdtsc();
+  unsigned long long sum = 0;
+  for (int r = 0; r<RUNS; r++){
+    t0 = rdtsc();
 
-  kernel(m, n, k, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, det3_out);
+    kernel(m, n, k, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, det3_out);
 
-  t1 = rdtsc();
+    t1 = rdtsc();
+    sum += (t1 - t0);  
+  }
 
+  check(m, n, k, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, res);
+  int correct = 1;
+  for (int i = 0; i != m * n * k; ++i) {
+    correct &= (fabs(det3_out[i] - res[i]) < 1e-13);
+  }
 
-  // int correct = 1;
-  // for (int i = 0; i != m * n; ++i) {
-  //   correct &= (fabs(c[i] - c_check[i]) < 1e-13);
-  // }
-
-  //printf("%d\t %d\t %d\t %lf %d\n", m, n, k, (2.0*m*n*k)/((double)(t1-t0)*MAX_FREQ/BASE_FREQ), correct);
-  printf("det3_out = %f, %f, %f, %f, %f, %f, %f, %f\n", det3_out[0], det3_out[2], det3_out[4], det3_out[6], det3_out[8], det3_out[10], det3_out[12], det3_out[15]);
+  printf("%d\t %d\t %d\t %lf %d\n", m, n, k, (29.0*m*n*k)/((double)(sum/(1.0*RUNS))*(MAX_FREQ/BASE_FREQ)), correct);
 
   free(Ax);
   free(Ay);
@@ -105,6 +147,18 @@ int main(){
   free(Dx);
   free(Dy);
   free(det3_out);
+  // free(a);
+  // free(b);
+  // free(c);
+  // free(d);
+  // free(e);
+  // free(f);
+  // free(g);
+  // free(h);
+  // free(i);
+  // free(det2_out1);
+  // free(det2_out2);
+  // free(det2_out3);
 
   return 0;
 }
