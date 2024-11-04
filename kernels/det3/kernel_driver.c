@@ -6,7 +6,7 @@
 
 #define MAX_FREQ 3.4
 #define BASE_FREQ 2.4
-#define RUNS 100000
+#define RUNS 1
 
 //timing routine for reading the time stamp counter
 static __inline__ unsigned long long rdtsc(void) {
@@ -71,12 +71,12 @@ int main(){
   double *det3_out;
   double *res;
 
-  unsigned long long t0, t1;
+  unsigned long long t0, t1, t2, t3;
 
   // Kernel dim
   int m = 1;
   int n = 8;
-  int k = 256;
+  int k = 1024;
   
   //create memory aligned buffers
   posix_memalign((void**) &Ax, 64, m * n * k * sizeof(double));
@@ -121,13 +121,18 @@ int main(){
   }
 
   unsigned long long sum = 0;
+  unsigned long long sum_check = 0;
   for (int r = 0; r<RUNS; r++){
+
     t0 = rdtsc();
-
     kernel(m, n, k, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, det3_out);
-
     t1 = rdtsc();
     sum += (t1 - t0);  
+
+    t2 = rdtsc();
+    check(m, n, k, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, res);
+    t3 = rdtsc();
+    sum_check += (t3 - t2); 
   }
 
   check(m, n, k, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, res);
@@ -136,7 +141,8 @@ int main(){
     correct &= (fabs(det3_out[i] - res[i]) < 1e-13);
   }
 
-  printf("%d\t %d\t %d\t %lf %d\n", m, n, k, (29.0*m*n*k)/((double)(sum/(1.0*RUNS))*(MAX_FREQ/BASE_FREQ)), correct);
+  // printf("%d\t %d\t %d\t %lf\t %lf\t %d\n", m, n, k, (29.0*m*n*k)/((double)(sum/(1.0*RUNS))*(MAX_FREQ/BASE_FREQ)), (29.0*m*n*k)/((double)(sum_check/(1.0*RUNS))*(MAX_FREQ/BASE_FREQ)), correct);
+  printf("%ld\t %ld\t\n", sum, sum_check);
 
   free(Ax);
   free(Ay);
@@ -147,18 +153,6 @@ int main(){
   free(Dx);
   free(Dy);
   free(det3_out);
-  // free(a);
-  // free(b);
-  // free(c);
-  // free(d);
-  // free(e);
-  // free(f);
-  // free(g);
-  // free(h);
-  // free(i);
-  // free(det2_out1);
-  // free(det2_out2);
-  // free(det2_out3);
 
   return 0;
 }

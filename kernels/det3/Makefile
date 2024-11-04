@@ -1,6 +1,6 @@
 
 CC		= gcc
-CC_FLAGS 	= -O3 -std=c99 -march=native -mfma -mavx -mavx2
+CC_FLAGS 	= -O1 -std=c99 -march=native -mfma -mavx -mavx2
 RM 		= rm -f
 
 default: all assemble
