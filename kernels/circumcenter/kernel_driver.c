@@ -9,7 +9,7 @@
 
 #define ALIGNMENT 64
 
-#define SIMD_SIZE 4
+#define SIMD_SIZE 8
 
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
@@ -19,29 +19,29 @@ static __inline__ unsigned long long rdtsc(void) {
 
 int main(void) {
   // Set up data structures
-  double *Ax;
-  double *Ay;
-  double *Bx;
-  double *By;
-  double *Cx;
-  double *Cy;
-  double *partUx;
-  double *partUy;
-  double *partD;
-  double *Ux;
-  double *Uy;
+  float *Ax;
+  float *Ay;
+  float *Bx;
+  float *By;
+  float *Cx;
+  float *Cy;
+  float *partUx;
+  float *partUy;
+  float *partD;
+  float *Ux;
+  float *Uy;
 
-  posix_memalign((void **)&Ax, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&Ay, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&Bx, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&By, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&Cx, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&Cy, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&partUx, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&partUy, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&partD, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&Ux, ALIGNMENT, SIMD_SIZE * sizeof(double));
-  posix_memalign((void **)&Uy, ALIGNMENT, SIMD_SIZE * sizeof(double));
+  posix_memalign((void **)&Ax, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Ay, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Bx, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&By, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Cx, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Cy, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&partUx, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&partUy, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&partD, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Ux, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Uy, ALIGNMENT, SIMD_SIZE * sizeof(float));
 
   // Initialize data
   for (int i = 0; i < SIMD_SIZE; i++) {
