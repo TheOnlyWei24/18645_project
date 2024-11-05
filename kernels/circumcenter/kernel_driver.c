@@ -9,7 +9,9 @@
 
 #define ALIGNMENT 64
 
-#define SIMD_SIZE 8
+// #define SIMD_SIZE 8
+
+#define NUM_ELEMS 2
 
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
@@ -31,20 +33,31 @@ int main(void) {
   float *Ux;
   float *Uy;
 
-  posix_memalign((void **)&Ax, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Ay, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Bx, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&By, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Cx, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Cy, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&partUx, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&partUy, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&partD, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Ux, ALIGNMENT, SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Uy, ALIGNMENT, SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Ax, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Ay, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Bx, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&By, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Cx, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Cy, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&partUx, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&partUy, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&partD, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Ux, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Uy, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
 
   // Initialize data
-  for (int i = 0; i < SIMD_SIZE; i++) {
+  for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++) {
     Ax[i] = 0.0;
     Ay[i] = 0.0;
     Bx[i] = 1.0;
@@ -62,7 +75,8 @@ int main(void) {
   kernel0(Ax, Ay, Bx, By, Cx, Cy, partUx, partUy, partD);
   kernel1(partD, partUx, partUy, Ux, Uy);
 
-  printf("%f %f\n", Ux[0], Uy[0]);
+  printf("First kernel: %f %f\n", Ux[0], Uy[0]);
+  printf("Second kernel: %f %f\n", Ux[SIMD_SIZE], Uy[SIMD_SIZE]);
 
   // Clean up
   free(Ax);
