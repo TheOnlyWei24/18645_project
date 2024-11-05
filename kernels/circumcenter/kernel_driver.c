@@ -11,7 +11,7 @@
 
 // #define SIMD_SIZE 8
 
-#define NUM_ELEMS 2
+#define NUM_ELEMS 4
 
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
@@ -77,6 +77,8 @@ int main(void) {
 
   printf("First kernel: %f %f\n", Ux[0], Uy[0]);
   printf("Second kernel: %f %f\n", Ux[SIMD_SIZE], Uy[SIMD_SIZE]);
+  printf("Third kernel: %f %f\n", Ux[2 * SIMD_SIZE], Uy[2 * SIMD_SIZE]);
+  printf("Fourth kernel: %f %f\n", Ux[3 * SIMD_SIZE], Uy[3 * SIMD_SIZE]);
 
   // Clean up
   free(Ax);
