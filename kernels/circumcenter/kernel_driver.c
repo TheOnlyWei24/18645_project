@@ -9,9 +9,9 @@
 
 #define ALIGNMENT 64
 
-// #define SIMD_SIZE 8
-
 #define NUM_ELEMS 6
+
+#define RUNS 1
 
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
@@ -71,9 +71,21 @@ int main(void) {
     Uy[i] = 0.0;
   }
 
+  unsigned long long sum, t0, t1;
+
+  sum = 0;
+
   // Test kernels
-  kernel0(Ax, Ay, Bx, By, Cx, Cy, partUx, partUy, partD);
-  kernel1(partD, partUx, partUy, Ux, Uy);
+  for (int i = 0; i < RUNS; i++) {
+    t0 = rdtsc();
+    kernel0(Ax, Ay, Bx, By, Cx, Cy, partUx, partUy, partD);
+    kernel1(partD, partUx, partUy, Ux, Uy);
+    t1 = rdtsc();
+    sum += (t1 - t0);
+  }
+
+  // TODO -- FLOPS!
+  // printf(" %lf\n", (2.0 * mc * n * k) / ((double)(sum / (1.0 * RUNS))));
 
   printf("First kernel: %f %f\n", Ux[0], Uy[0]);
   printf("Second kernel: %f %f\n", Ux[SIMD_SIZE], Uy[SIMD_SIZE]);
