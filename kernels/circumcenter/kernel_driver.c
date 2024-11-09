@@ -11,7 +11,11 @@
 
 #define NUM_ELEMS 6
 
-#define RUNS 1
+#define RUNS 100000
+
+// kernel0 + kernel1
+// SIMD_SIZE * NUM_OPS * NUM ITER
+#define OPS ((SIMD_SIZE * 30 * 6) + (SIMD_SIZE * 18 * 6))
 
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
@@ -84,8 +88,8 @@ int main(void) {
     sum += (t1 - t0);
   }
 
-  // TODO -- FLOPS!
-  // printf(" %lf\n", (2.0 * mc * n * k) / ((double)(sum / (1.0 * RUNS))));
+  printf(" %lf\n",
+         (OPS) / ((double)(sum / (1.0 * RUNS)) * (MAX_FREQ / BASE_FREQ)));
 
   printf("First kernel: %f %f\n", Ux[0], Uy[0]);
   printf("Second kernel: %f %f\n", Ux[SIMD_SIZE], Uy[SIMD_SIZE]);
