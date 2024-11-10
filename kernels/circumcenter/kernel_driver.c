@@ -1,3 +1,4 @@
+#include "baseline.h"
 #include "kernel.h"
 #include <math.h>
 #include <stdio.h>
@@ -82,8 +83,9 @@ int main(void) {
   // Test kernels
   for (int i = 0; i < RUNS; i++) {
     t0 = rdtsc();
-    kernel0(Ax, Ay, Bx, By, Cx, Cy, partUx, partUy, partD);
-    kernel1(partD, partUx, partUy, Ux, Uy);
+    // kernel0(Ax, Ay, Bx, By, Cx, Cy, partUx, partUy, partD);
+    // kernel1(partD, partUx, partUy, Ux, Uy);
+    baseline(Ax, Ay, Bx, By, Cx, Cy, Ux, Uy);
     t1 = rdtsc();
     sum += (t1 - t0);
   }
