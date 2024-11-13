@@ -1,101 +1,92 @@
+#include "baseline.h"
+#include "kernel.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
-#include "immintrin.h"
 
-#define MAX_FREQ 3.4
 #define BASE_FREQ 2.4
 
-//timing routine for reading the time stamp counter
+#define MAX_FREQ 3.4
+
+#define ALIGNMENT 64
+
+#define NUM_ELEMS 1
+
+#define RUNS 1
+
+// kernel0 + kernel1
+// SIMD_SIZE * NUM_OPS * NUM ITER
+#define OPS ((SIMD_SIZE * 30 * 6) + (SIMD_SIZE * 18 * 6))
+
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
-  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
-  return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+  __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+  return ((unsigned long long)lo) | (((unsigned long long)hi) << 32);
 }
 
-void kernel
-(
- int               m,
- int               n,
- int               k,
- double*     restrict Ax,
- double*     restrict Ay,
- double*     restrict Bx,
- double*     restrict By,
- double*     restrict Cx,
- double*     restrict Cy,
- double*     restrict Dx,
- double*     restrict Dy,
- double*     restrict det3_out
- );
+int main(void) {
+  // Set up data structures
+  float *Ax;
+  float *Ay;
+  float *Bx;
+  float *By;
+  float *Cx;
+  float *Cy;
+  float *Dx;
+  float *Dy;
+  float *out;
 
-int main(){
+  posix_memalign((void **)&Ax, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Ay, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Bx, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&By, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Cx, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Cy, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Dx, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&Dy, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&out, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
 
-  double *Ax, *Ay;
-  double *Bx, *By;
-  double *Cx, *Cy;
-  double *Dx, *Dy;
-  double *det3_out;
-
-  unsigned long long t0, t1;
-
-  // Kernel dim
-  int m = 1;
-  int n = 8;
-  int k = 512;
-  
-  //create memory aligned buffers
-  posix_memalign((void**) &Ax, 64, m * n * k * sizeof(double));
-  posix_memalign((void**) &Ay, 64, m * n * k * sizeof(double));
-  posix_memalign((void**) &Bx, 64, m * n * k * sizeof(double));
-  posix_memalign((void**) &By, 64, m * n * k * sizeof(double));
-  posix_memalign((void**) &Cx, 64, m * n * k * sizeof(double));
-  posix_memalign((void**) &Cy, 64, m * n * k * sizeof(double));
-  posix_memalign((void**) &Dx, 64, m * n * k * sizeof(double));
-  posix_memalign((void**) &Dy, 64, m * n * k * sizeof(double));
-  posix_memalign((void**) &det3_out, 64, m * n * k * sizeof(double));
-
-  //initialize A
-  for (int i = 0; i < k * m * n; i++){
-    Ax[i] = 2;
-    Ay[i] = 3;
-  }
-  //initialize B
-  for (int i = 0; i < k * m * n; i++){
-    Bx[i] = 4;
-    By[i] = 5;
-  }
-  //initialize C
-  for (int i = 0; i < k * m * n; i++){
-    Cx[i] = 6;
-    Cy[i] = 7;
+  // Initialize data
+  for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++) {
+    Ax[i] = 0.0;
+    Ay[i] = 0.0;
+    Bx[i] = 1.0;
+    By[i] = 0.0;
+    Cx[i] = 0.5;
+    Cy[i] = 1.0;
+    Dx[i] = 0.5;
+    Dy[i] = 0.5;
+    out[i] = 0.0;
   }
 
-  //initialize D
-  for (int i = 0; i < k * m * n; i++){
-    Dx[i] = 1;
-    Dy[i] = 1;
+  unsigned long long sum, t0, t1;
+
+  sum = 0;
+
+  // Test kernels
+  for (int i = 0; i < RUNS; i++) {
+    t0 = rdtsc();
+    // kernel(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, out);
+    baseline(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, out);
+    t1 = rdtsc();
+    sum += (t1 - t0);
   }
-  //initialize output
-  for (int i = 0; i < k * m * n; i++){
-    det3_out[i] = 0.0;
-  }
 
-  t0 = rdtsc();
+  // printf(" %lf\n",
+  //        (OPS) / ((double)(sum / (1.0 * RUNS)) * (MAX_FREQ / BASE_FREQ)));
 
-  kernel(m, n, k, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, det3_out);
+  printf("out: %f\n", out[0]);
 
-  t1 = rdtsc();
-
-
-  // int correct = 1;
-  // for (int i = 0; i != m * n; ++i) {
-  //   correct &= (fabs(c[i] - c_check[i]) < 1e-13);
-  // }
-
-  //printf("%d\t %d\t %d\t %lf %d\n", m, n, k, (2.0*m*n*k)/((double)(t1-t0)*MAX_FREQ/BASE_FREQ), correct);
-  printf("det3_out = %f, %f, %f, %f, %f, %f, %f, %f\n", det3_out[0], det3_out[2], det3_out[4], det3_out[6], det3_out[8], det3_out[10], det3_out[12], det3_out[15]);
-
+  // Clean up
   free(Ax);
   free(Ay);
   free(Bx);
@@ -104,7 +95,7 @@ int main(){
   free(Cy);
   free(Dx);
   free(Dy);
-  free(det3_out);
+  free(out);
 
   return 0;
 }
