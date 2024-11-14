@@ -1,9 +1,11 @@
 #ifndef _BASELINE_KERNEL_H_
 #define _BASELINE_KERNEL_H_
 
+#define NUM_ELEMS 4
+
 void baseline(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
               float *Dx, float *Dy, float *out) {
-  for (int z = 0; z < (8 * 1); z++) {
+  for (int z = 0; z < (8 * NUM_ELEMS); z++) {
     float a = Ax[z] - Dx[z];
     float b = Ay[z] - Dy[z];
     float d = Bx[z] - Dx[z];

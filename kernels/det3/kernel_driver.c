@@ -10,9 +10,7 @@
 
 #define ALIGNMENT 64
 
-#define NUM_ELEMS 1
-
-#define RUNS 1000000
+#define RUNS 10000
 
 // kernel0 + kernel1
 // SIMD_SIZE * NUM_OPS * NUM ITER
@@ -35,6 +33,7 @@ int main(void) {
   float *Dx;
   float *Dy;
   float *out;
+  float *out_baseline;
 
   posix_memalign((void **)&Ax, ALIGNMENT,
                  NUM_ELEMS * SIMD_SIZE * sizeof(float));
@@ -54,6 +53,8 @@ int main(void) {
                  NUM_ELEMS * SIMD_SIZE * sizeof(float));
   posix_memalign((void **)&out, ALIGNMENT,
                  NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&out_baseline, ALIGNMENT,
+                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
 
   // Initialize data
   for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++) {
@@ -66,28 +67,40 @@ int main(void) {
     Dx[i] = 0.5;
     Dy[i] = 0.5;
     out[i] = 0.0;
+    out_baseline[i] = 0.0;
   }
 
-  unsigned long long sum, t0, t1;
+  unsigned long long sum_baseline, sum_kernel, t0, t1;
 
-  sum = 0;
+  sum_baseline = 0;
+  sum_kernel = 0;
 
   // Test kernels
   for (int i = 0; i < RUNS; i++) {
     t0 = rdtsc();
-    baseline(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, out);
-    // kernel(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, out);
+    baseline(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, out_baseline);
     t1 = rdtsc();
-    sum += (t1 - t0);
+    sum_baseline += (t1 - t0);
+
+    t0 = rdtsc();
+    kernel(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, out);
+    t1 = rdtsc();
+    sum_kernel += (t1 - t0);
   }
 
-  printf("cycles: %llu\n", sum);
+  printf("baseline cycles/RUNS: %llu\n", sum_baseline / RUNS);
+  printf("kernel cycles/RUNS: %llu\n", sum_kernel / RUNS);
 
   // printf(" %lf\n",
   //        (OPS) / ((double)(sum / (1.0 * RUNS)) * (MAX_FREQ /
   //        BASE_FREQ)));
 
-  printf("out: %f\n", out[0]);
+  for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++) {
+    if (out[i] != out_baseline[i]) {
+      printf("out[%d]: %f\n", i, out[i]);
+      printf("out_baseline[%d]: %f\n", i, out_baseline[i]);
+    }
+  }
 
   // Clean up
   free(Ax);
