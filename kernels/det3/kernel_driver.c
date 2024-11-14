@@ -6,9 +6,9 @@
 
 #define MAX_FREQ 3.4
 #define BASE_FREQ 2.4
-#define RUNS 10000
+#define RUNS 100000
 static const int SIMD_SIZE = 8;
-static const int NUM_ELEMS = 4;
+static const int NUM_ELEMS = 1024;
 static const int ALIGNMENT = 32;
 
 //timing routine for reading the time stamp counter
@@ -17,6 +17,7 @@ static __inline__ unsigned long long rdtsc(void) {
   __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
   return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
 }
+void kernel2(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy, float *Dx, float *Dy, float *out);
 
 void kernel
 (
@@ -88,10 +89,10 @@ int main(){
   float *Bx, *By;
   float *Cx, *Cy;
   float *Dx, *Dy;
-  float *det3_out;
+  float *kernel1_out, *kernel2_out;
   float *res;
 
-  unsigned long long t0, t1, t2, t3;
+  unsigned long long t0, t1, t2, t3, t4, t5;
   
   //create memory aligned buffers
   posix_memalign((void**) &Ax, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
@@ -102,8 +103,9 @@ int main(){
   posix_memalign((void**) &Cy, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
   posix_memalign((void**) &Dx, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
   posix_memalign((void**) &Dy, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void**) &det3_out, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void**) &kernel1_out, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
   posix_memalign((void**) &res, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void**) &kernel2_out, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
 
   srand((unsigned int)time(NULL));
   float scale = 64;
@@ -131,33 +133,49 @@ int main(){
   }
   //initialize output
   for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++){
-    det3_out[i] = 0.0;
+    kernel1_out[i] = 0.0;
+    kernel2_out[i] = 0.0;
     res[i] = 0.0;
   }
 
-  unsigned long long sum = 0;
+  unsigned long long sum_kernel1 = 0;
+  unsigned long long sum_kernel2 = 0;
   unsigned long long sum_check = 0;
+  
   for (int r = 0; r<RUNS; r++){
 
-    t0 = rdtsc();
-    kernel(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, det3_out);
-    t1 = rdtsc();
-    sum += (t1 - t0);  
+    
 
+    t0 = rdtsc();
+    kernel(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, kernel1_out);
+    t1 = rdtsc();
+    sum_kernel1 += (t1 - t0);  
+
+    int idx = 0;
+    const int KERNEl2_SIZE = 4*SIMD_SIZE;
     t2 = rdtsc();
-    check(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, res);
+    for (int p = 0; p < (int)((NUM_ELEMS*SIMD_SIZE)/KERNEl2_SIZE); p++){
+      idx = KERNEl2_SIZE*p;
+      kernel2(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], &Dx[idx], &Dy[idx], &kernel2_out[idx]);
+    }
     t3 = rdtsc();
-    sum_check += (t3 - t2); 
+    sum_kernel2 += (t3 - t2); 
+
+    t4 = rdtsc();
+    check(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, res);
+    t5 = rdtsc();
+    sum_check += (t5 - t4); 
   }
 
-  baseline(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, res);
   int correct = 1;
   for (int i = 0; i != NUM_ELEMS * SIMD_SIZE; ++i) {
-    correct &= (fabs(det3_out[i] - res[i]) < 1e-13);
+    correct &= (fabs(kernel1_out[i] - res[i]) < 1e-13);
   }
 
-  printf("baseline cycles/RUNS: %llu\n", sum_check / RUNS);
-  printf("kernel cycles/RUNS: %llu\n", sum / RUNS);
+  printf("check cycles/RUNS: %llu\n", sum_check / RUNS);
+  printf("kernel cycles/RUNS: %llu\n", sum_kernel1 / RUNS);
+  printf("kernel2 cycles/RUNS: %llu\n", sum_kernel2 / RUNS);
+  printf("%d \n", correct);
   // printf("%llu, %llu\t, %d\n", (sum / RUNS), (sum_check / RUNS), correct);
 
   free(Ax);
@@ -168,7 +186,8 @@ int main(){
   free(Cy);
   free(Dx);
   free(Dy);
-  free(det3_out);
-
+  free(kernel1_out);
+  free(kernel2_out);
+  free(res);
   return 0;
 }

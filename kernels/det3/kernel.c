@@ -4,7 +4,7 @@
 #include <immintrin.h>
 
 static const int SIMD_SIZE = 8;
-static const int NUM_ELEMS = 4;
+static const int NUM_ELEMS = 1024;
 static const int KERNEL_SIZE = 2*SIMD_SIZE;
 
 static inline void kernel_sub
