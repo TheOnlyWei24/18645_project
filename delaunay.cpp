@@ -3,12 +3,16 @@
 #include <cmath>
 #include <limits>
 #include <algorithm>
+#include <immintrin.h> 
+#include "kernels/det3/kernel.h"
 
-// Vertex class
+#define NUM_POINTS 16
+
+// Vertex class 
 struct Vertex {
-    double x, y;
+    float x, y;
     Vertex() : x(0), y(0) {}
-    Vertex(double x_, double y_) : x(x_), y(y_) {}
+    Vertex(float x_, float y_) : x(x_), y(y_) {}
     bool operator==(const Vertex& v) const {
         return x == v.x && y == v.y;
     }
@@ -27,39 +31,57 @@ struct Edge {
 struct Triangle {
     Vertex v0, v1, v2;
     Vertex circumcenter;
-    double circumradius;
+    float circumradius;
 
     Triangle(const Vertex& v0_, const Vertex& v1_, const Vertex& v2_)
         : v0(v0_), v1(v1_), v2(v2_) {
+        // Check if the vertices are in counter-clockwise order
+        if (!isCounterClockwise(v0, v1, v2)) {
+            std::swap(v1, v2);
+        }
         calculateCircumcircle();
     }
 
-    void calculateCircumcircle() {
-        double ax = v0.x, ay = v0.y;
-        double bx = v1.x, by = v1.y;
-        double cx = v2.x, cy = v2.y;
+    bool isCounterClockwise(const Vertex& a, const Vertex& b, const Vertex& c) const {
+        return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) > 0;
+    }
 
-        double d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
-        if (d == 0) {  // Degenerate triangle check
+    void calculateCircumcircle() {
+        float ax = v0.x, ay = v0.y;
+        float bx = v1.x, by = v1.y;
+        float cx = v2.x, cy = v2.y;
+
+        float d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+        if (d == 0) {
             circumcenter = Vertex(0, 0);
             circumradius = 0;
             return;
         }
 
-        double ux = ((ax * ax + ay * ay) * (by - cy) +
-                     (bx * bx + by * by) * (cy - ay) +
-                     (cx * cx + cy * cy) * (ay - by)) / d;
-        double uy = ((ax * ax + ay * ay) * (cx - bx) +
-                     (bx * bx + by * by) * (ax - cx) +
-                     (cx * cx + cy * cy) * (bx - ax)) / d;
+        float ux = ((ax * ax + ay * ay) * (by - cy) +
+                    (bx * bx + by * by) * (cy - ay) +
+                    (cx * cx + cy * cy) * (ay - by)) / d;
+        float uy = ((ax * ax + ay * ay) * (cx - bx) +
+                    (bx * bx + by * by) * (ax - cx) +
+                    (cx * cx + cy * cy) * (bx - ax)) / d;
         circumcenter = Vertex(ux, uy);
         circumradius = std::sqrt((ux - ax) * (ux - ax) + (uy - ay) * (uy - ay));
     }
 
     bool inCircumcircle(const Vertex& v) const {
-        double dist = std::sqrt((v.x - circumcenter.x) * (v.x - circumcenter.x) +
-                                (v.y - circumcenter.y) * (v.y - circumcenter.y));
+        float dist = std::sqrt((v.x - circumcenter.x) * (v.x - circumcenter.x) +
+                               (v.y - circumcenter.y) * (v.y - circumcenter.y));
         return dist <= circumradius;
+    }
+
+    // Find the area of the triangle
+    float area() const {
+        return 0.5f * std::fabs(v0.x * (v1.y - v2.y) + v1.x * (v2.y - v0.y) + v2.x * (v0.y - v1.y));
+    }
+
+    // Check if the triangle is degenerate
+    bool isDegenerate(float tolerance = 1e-6f) const {
+        return area() < tolerance;
     }
 };
 
@@ -69,10 +91,8 @@ std::vector<Edge> getBoundaryEdges(const std::vector<Edge>& edges) {
     for (const auto& edge : edges) {
         auto it = std::find(boundaryEdges.begin(), boundaryEdges.end(), edge);
         if (it != boundaryEdges.end()) {
-            // If edge is already in list, remove it -- because it is shared
             boundaryEdges.erase(it);
         } else {
-            // Else add edge to list
             boundaryEdges.push_back(edge);
         }
     }
@@ -81,20 +101,20 @@ std::vector<Edge> getBoundaryEdges(const std::vector<Edge>& edges) {
 
 // Create a super-triangle with all vertices
 Triangle createSuperTriangle(const std::vector<Vertex>& vertices) {
-    double minX = std::numeric_limits<double>::infinity();
-    double minY = std::numeric_limits<double>::infinity();
-    double maxX = -std::numeric_limits<double>::infinity();
-    double maxY = -std::numeric_limits<double>::infinity();
+    float minX = std::numeric_limits<float>::infinity();
+    float minY = std::numeric_limits<float>::infinity();
+    float maxX = -std::numeric_limits<float>::infinity();
+    float maxY = -std::numeric_limits<float>::infinity();
 
     for (const auto& vertex : vertices) {
-        if (vertex.x < minX) minX = vertex.x;
-        if (vertex.y < minY) minY = vertex.y;
-        if (vertex.x > maxX) maxX = vertex.x;
-        if (vertex.y > maxY) maxY = vertex.y;
+        minX = std::min(minX, vertex.x);
+        minY = std::min(minY, vertex.y);
+        maxX = std::max(maxX, vertex.x);
+        maxY = std::max(maxY, vertex.y);
     }
 
-    double dx = (maxX - minX) * 10;
-    double dy = (maxY - minY) * 10;
+    float dx = (maxX - minX) * 2;
+    float dy = (maxY - minY) * 2;
 
     Vertex v0(minX - dx, minY - dy * 3);
     Vertex v1(minX - dx, maxY + dy);
@@ -102,30 +122,97 @@ Triangle createSuperTriangle(const std::vector<Vertex>& vertices) {
     return Triangle(v0, v1, v2);
 }
 
-// Bowyer-Watson algorithm for Delaunay triangulation
+struct PackedPoints {
+    float Ax[NUM_POINTS];
+    float Ay[NUM_POINTS];
+    float Bx[NUM_POINTS];
+    float By[NUM_POINTS];
+    float Cx[NUM_POINTS];
+    float Cy[NUM_POINTS];
+    float Dx[NUM_POINTS];
+    float Dy[NUM_POINTS];
+};
+
+// Function to print PackedPoints
+void printPackedData(const PackedPoints& packedData, size_t numVertices) {
+    std::cout << "Packed Data:" << std::endl;
+    for (size_t i = 0; i < numVertices; ++i) {
+        std::cout << "Index " << i << ": "
+                  << "Ax: " << packedData.Ax[i] << ", Ay: " << packedData.Ay[i]
+                  << ", Bx: " << packedData.Bx[i] << ", By: " << packedData.By[i]
+                  << ", Cx: " << packedData.Cx[i] << ", Cy: " << packedData.Cy[i]
+                  << ", Dx: " << packedData.Dx[i] << ", Dy: " << packedData.Dy[i]
+                  << std::endl;
+    }
+}
+
+// Pack all vertices aka Dx, Dy
+void packAllVertices(const std::vector<Vertex>& vertices, PackedPoints& packedData) {
+    for (size_t i = 0; i < vertices.size(); ++i) {
+        packedData.Dx[i] = vertices[i].x;
+        packedData.Dy[i] = vertices[i].y;
+    }
+}
+
+// Main loop for Delaunay triangulation
 std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices) {
     std::vector<Triangle> triangles;
     Triangle superTriangle = createSuperTriangle(vertices);
     triangles.push_back(superTriangle);
 
+    // Pack all vertices
+    PackedPoints packedData;
+    packAllVertices(vertices, packedData);
+
     for (const auto& vertex : vertices) {
         std::vector<Edge> edges;
-        // Find all triangles whose circumcircle contains the new vertex
+
         for (auto it = triangles.begin(); it != triangles.end();) {
-            if (it->inCircumcircle(vertex)) {
-                edges.push_back(Edge(it->v0, it->v1));
-                edges.push_back(Edge(it->v1, it->v2));
-                edges.push_back(Edge(it->v2, it->v0));
-                it = triangles.erase(it);
-            } else {
+            // Set the current triangle vertices as Ax, Ay, Bx, By, Cx, Cy
+            std::fill(std::begin(packedData.Ax), std::end(packedData.Ax), it->v0.x);
+            std::fill(std::begin(packedData.Ay), std::end(packedData.Ay), it->v0.y);
+            std::fill(std::begin(packedData.Bx), std::end(packedData.Bx), it->v1.x);
+            std::fill(std::begin(packedData.By), std::end(packedData.By), it->v1.y);
+            std::fill(std::begin(packedData.Cx), std::end(packedData.Cx), it->v2.x);
+            std::fill(std::begin(packedData.Cy), std::end(packedData.Cy), it->v2.y);
+
+            // Print packed data
+            // printPackedData(packedData, vertices.size());
+
+            float det3_out[NUM_POINTS];
+            kernel(packedData.Ax, packedData.Ay, packedData.Bx, packedData.By,
+                   packedData.Cx, packedData.Cy, packedData.Dx, packedData.Dy, det3_out);
+
+            bool inCircle = false;
+            for (size_t i = 0; i < vertices.size(); ++i) {
+                
+                // Print the triangle and corresponding point details
+                /*
+                std::cout << "Triangle: (" << it->v0.x << ", " << it->v0.y << ") -> ("
+                          << it->v1.x << ", " << it->v1.y << ") -> ("
+                          << it->v2.x << ", " << it->v2.y << ") \t ";
+                std::cout << "Point: (" << packedData.Dx[i] << ", " << packedData.Dy[i] << ") \t ";
+                std::cout << "it->inCircumcircle(vertex): " << it->inCircumcircle(vertices[i]) << "\t";
+                std::cout << "Determinant: " << det3_out[i] << "\n";
+                */
+
+                if (det3_out[i] > 0) {
+                    edges.push_back(Edge(it->v0, it->v1));
+                    edges.push_back(Edge(it->v1, it->v2));
+                    edges.push_back(Edge(it->v2, it->v0));
+                    it = triangles.erase(it);
+                    inCircle = true;
+                    break;
+                }
+            }
+
+            if (!inCircle) {
                 ++it;
             }
         }
 
-        // Remove duplicate edges and keep only boundary edges
         edges = getBoundaryEdges(edges);
 
-        // Re-triangulate the polygonal hole using the new vertex
         for (const auto& edge : edges) {
             triangles.emplace_back(edge.v0, edge.v1, vertex);
         }
@@ -151,8 +238,12 @@ std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices) {
 
 int main() {
     std::vector<Vertex> vertices = {
-        Vertex(0, 0), Vertex(1, 0), Vertex(0, 1), Vertex(1, 1)
+        Vertex(0, 0), Vertex(1, 2), Vertex(2, 4), Vertex(3, 1),
+        Vertex(4, 3), Vertex(5, 5), Vertex(6, 2), Vertex(7, 4),
+        Vertex(1, 5), Vertex(2, 6), Vertex(3, 7), Vertex(4, 6),
+        Vertex(5, 1), Vertex(6, 0), Vertex(7, 3), Vertex(8, 5)
     };
+
 
     std::vector<Triangle> triangulation = bowyerWatson(vertices);
 
