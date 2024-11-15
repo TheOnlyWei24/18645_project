@@ -1,12 +1,14 @@
 #include <iostream>
 #include <vector>
+#include <map>
 #include <cmath>
 #include <limits>
 #include <algorithm>
 #include <immintrin.h> 
 #include "kernels/det3/kernel.h"
 
-#define NUM_POINTS 16
+#define NUM_POINTS 16 // NOTE: NEEDS TO MULTIPLE OF KERNEL_SIZE AS OF RN and MUST BE == TO vertices.size()
+#define NUM_TRIANGLES 256 // NOTE: NEEDS TO MULTIPLE OF KERNEL_SIZE AS OF RN
 
 // Vertex class 
 struct Vertex {
@@ -78,26 +80,38 @@ struct Triangle {
     float area() const {
         return 0.5f * std::fabs(v0.x * (v1.y - v2.y) + v1.x * (v2.y - v0.y) + v2.x * (v0.y - v1.y));
     }
+};
 
-    // Check if the triangle is degenerate
-    bool isDegenerate(float tolerance = 1e-6f) const {
-        return area() < tolerance;
+// Comparator for Edge type
+struct CompareEdges {
+    bool operator()(const Edge& e1, const Edge& e2) const {
+        if (e1.v0.x != e2.v0.x) return e1.v0.x < e2.v0.x;
+        if (e1.v0.y != e2.v0.y) return e1.v0.y < e2.v0.y;
+        if (e1.v1.x != e2.v1.x) return e1.v1.x < e2.v1.x;
+        return e1.v1.y < e2.v1.y;
     }
 };
 
-// To remove duplicate edges and keep only boundary edges
+// To remove duplicate edges and keep only boundary edges -- TODO: IS THIS CORRECT? OR SHOULD I JUST DO: VECTOR -> SET -> VECTOR?
 std::vector<Edge> getBoundaryEdges(const std::vector<Edge>& edges) {
-    std::vector<Edge> boundaryEdges;
+    // Use a map to count the occurrences of each edge
+    std::map<Edge, int, CompareEdges> edgeCount;
+
     for (const auto& edge : edges) {
-        auto it = std::find(boundaryEdges.begin(), boundaryEdges.end(), edge);
-        if (it != boundaryEdges.end()) {
-            boundaryEdges.erase(it);
-        } else {
+        edgeCount[edge]++;
+    }
+
+    // Collect edges that appear only once -- boundary edges ??
+    std::vector<Edge> boundaryEdges;
+    for (const auto& [edge, count] : edgeCount) {
+        if (count == 1) {
             boundaryEdges.push_back(edge);
         }
     }
+
     return boundaryEdges;
 }
+
 
 // Create a super-triangle with all vertices
 Triangle createSuperTriangle(const std::vector<Vertex>& vertices) {
@@ -113,8 +127,8 @@ Triangle createSuperTriangle(const std::vector<Vertex>& vertices) {
         maxY = std::max(maxY, vertex.y);
     }
 
-    float dx = (maxX - minX) * 2;
-    float dy = (maxY - minY) * 2;
+    float dx = (maxX - minX) * 2;       // TODO: SOME OTHER VALUE?
+    float dy = (maxY - minY) * 2;       // TODO: SOME OTHER VALUE?
 
     Vertex v0(minX - dx, minY - dy * 3);
     Vertex v1(minX - dx, maxY + dy);
@@ -123,36 +137,33 @@ Triangle createSuperTriangle(const std::vector<Vertex>& vertices) {
 }
 
 struct PackedPoints {
-    float Ax[NUM_POINTS];
-    float Ay[NUM_POINTS];
-    float Bx[NUM_POINTS];
-    float By[NUM_POINTS];
-    float Cx[NUM_POINTS];
-    float Cy[NUM_POINTS];
+    float Ax[NUM_TRIANGLES];
+    float Ay[NUM_TRIANGLES];
+    float Bx[NUM_TRIANGLES];
+    float By[NUM_TRIANGLES];
+    float Cx[NUM_TRIANGLES];
+    float Cy[NUM_TRIANGLES];
     float Dx[NUM_POINTS];
     float Dy[NUM_POINTS];
 };
 
-// Function to print PackedPoints
-void printPackedData(const PackedPoints& packedData, size_t numVertices) {
-    std::cout << "Packed Data:" << std::endl;
-    for (size_t i = 0; i < numVertices; ++i) {
-        std::cout << "Index " << i << ": "
-                  << "Ax: " << packedData.Ax[i] << ", Ay: " << packedData.Ay[i]
-                  << ", Bx: " << packedData.Bx[i] << ", By: " << packedData.By[i]
-                  << ", Cx: " << packedData.Cx[i] << ", Cy: " << packedData.Cy[i]
-                  << ", Dx: " << packedData.Dx[i] << ", Dy: " << packedData.Dy[i]
-                  << std::endl;
+// Function to pack all triangles and one vertex
+void packTrianglesAndVertex(const std::vector<Triangle>& triangles, const Vertex& vertex, PackedPoints& packedData) {
+    for (size_t i = 0; i < triangles.size(); ++i) {
+        packedData.Ax[i] = triangles[i].v0.x;
+        packedData.Ay[i] = triangles[i].v0.y;
+        packedData.Bx[i] = triangles[i].v1.x;
+        packedData.By[i] = triangles[i].v1.y;
+        packedData.Cx[i] = triangles[i].v2.x;
+        packedData.Cy[i] = triangles[i].v2.y;
+    }
+
+    for (size_t i = 0; i < NUM_POINTS; ++i) {
+        packedData.Dx[i] = vertex.x;
+        packedData.Dy[i] = vertex.y;
     }
 }
 
-// Pack all vertices aka Dx, Dy
-void packAllVertices(const std::vector<Vertex>& vertices, PackedPoints& packedData) {
-    for (size_t i = 0; i < vertices.size(); ++i) {
-        packedData.Dx[i] = vertices[i].x;
-        packedData.Dy[i] = vertices[i].y;
-    }
-}
 
 // Main loop for Delaunay triangulation
 std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices) {
@@ -160,55 +171,27 @@ std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices) {
     Triangle superTriangle = createSuperTriangle(vertices);
     triangles.push_back(superTriangle);
 
-    // Pack all vertices
     PackedPoints packedData;
-    packAllVertices(vertices, packedData);
 
     for (const auto& vertex : vertices) {
         std::vector<Edge> edges;
+        packTrianglesAndVertex(triangles, vertex, packedData);
 
+        float det3_out[NUM_POINTS];
+        kernel(packedData.Ax, packedData.Ay, packedData.Bx, packedData.By,
+               packedData.Cx, packedData.Cy, packedData.Dx, packedData.Dy, det3_out);
+
+        int i = 0;
         for (auto it = triangles.begin(); it != triangles.end();) {
-            // Set the current triangle vertices as Ax, Ay, Bx, By, Cx, Cy
-            std::fill(std::begin(packedData.Ax), std::end(packedData.Ax), it->v0.x);
-            std::fill(std::begin(packedData.Ay), std::end(packedData.Ay), it->v0.y);
-            std::fill(std::begin(packedData.Bx), std::end(packedData.Bx), it->v1.x);
-            std::fill(std::begin(packedData.By), std::end(packedData.By), it->v1.y);
-            std::fill(std::begin(packedData.Cx), std::end(packedData.Cx), it->v2.x);
-            std::fill(std::begin(packedData.Cy), std::end(packedData.Cy), it->v2.y);
-
-            // Print packed data
-            // printPackedData(packedData, vertices.size());
-
-            float det3_out[NUM_POINTS];
-            kernel(packedData.Ax, packedData.Ay, packedData.Bx, packedData.By,
-                   packedData.Cx, packedData.Cy, packedData.Dx, packedData.Dy, det3_out);
-
-            bool inCircle = false;
-            for (size_t i = 0; i < vertices.size(); ++i) {
-                
-                // Print the triangle and corresponding point details
-                /*
-                std::cout << "Triangle: (" << it->v0.x << ", " << it->v0.y << ") -> ("
-                          << it->v1.x << ", " << it->v1.y << ") -> ("
-                          << it->v2.x << ", " << it->v2.y << ") \t ";
-                std::cout << "Point: (" << packedData.Dx[i] << ", " << packedData.Dy[i] << ") \t ";
-                std::cout << "it->inCircumcircle(vertex): " << it->inCircumcircle(vertices[i]) << "\t";
-                std::cout << "Determinant: " << det3_out[i] << "\n";
-                */
-
-                if (det3_out[i] > 0) {
-                    edges.push_back(Edge(it->v0, it->v1));
-                    edges.push_back(Edge(it->v1, it->v2));
-                    edges.push_back(Edge(it->v2, it->v0));
-                    it = triangles.erase(it);
-                    inCircle = true;
-                    break;
-                }
-            }
-
-            if (!inCircle) {
+            if (det3_out[i] > 0) {
+                edges.push_back(Edge(it->v0, it->v1));
+                edges.push_back(Edge(it->v1, it->v2));
+                edges.push_back(Edge(it->v2, it->v0));
+                it = triangles.erase(it);
+            } else {
                 ++it;
             }
+            ++i;
         }
 
         edges = getBoundaryEdges(edges);
@@ -236,6 +219,7 @@ std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices) {
     return triangles;
 }
 
+
 int main() {
     std::vector<Vertex> vertices = {
         Vertex(0, 0), Vertex(1, 2), Vertex(2, 4), Vertex(3, 1),
@@ -250,7 +234,7 @@ int main() {
     for (const auto& triangle : triangulation) {
         std::cout << "Triangle: (" << triangle.v0.x << ", " << triangle.v0.y << ") -> ("
                   << triangle.v1.x << ", " << triangle.v1.y << ") -> ("
-                  << triangle.v2.x << ", " << triangle.v2.y << ")\n";
+                  << triangle.v2.x << ", " << triangle.v2.y << "),\t" << "area (non-linearity check): " << triangle.area() << "\n";
     }
 
     return 0;
