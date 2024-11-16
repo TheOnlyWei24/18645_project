@@ -11,7 +11,7 @@
 
 #define RUNS 10000
 
-#define KERNEL_ITERS 1
+#define KERNEL_ITERS 2
 
 // kernel0 + kernel1
 // SIMD_SIZE * NUM_OPS * NUM ITER
@@ -25,25 +25,28 @@ static __inline__ unsigned long long rdtsc(void) {
 
 int main(void) {
   // Set up data structures
-  kernel_data_t *data;
+  kernel_in_data_t *in_data;
+  kernel_out_data_t *out_data;
   kernel_buffer_t *buffer;
 
-  posix_memalign((void **)&data, ALIGNMENT,
-                 KERNEL_ITERS * sizeof(kernel_data_t));
+  posix_memalign((void **)&in_data, ALIGNMENT,
+                 KERNEL_ITERS * sizeof(kernel_in_data_t));
+  posix_memalign((void **)&out_data, ALIGNMENT,
+                 KERNEL_ITERS * sizeof(kernel_out_data_t));
   posix_memalign((void **)&buffer, ALIGNMENT, sizeof(kernel_buffer_t));
 
   // Initialize data
   for (int i = 0; i < KERNEL_ITERS; i++) {
     for (int j = 0; j < NUM_SIMD_IN_KERNEL; j++) {
       for (int k = 0; k < SIMD_SIZE; k++) {
-        data[i].data[j].Ax[k] = 0.0;
-        data[i].data[j].Ay[k] = 0.0;
-        data[i].data[j].Bx[k] = 1.0;
-        data[i].data[j].By[k] = 0.0;
-        data[i].data[j].Cx[k] = 0.5;
-        data[i].data[j].Cy[k] = 1.0;
-        data[i].data[j].Ux[k] = 0.0;
-        data[i].data[j].Uy[k] = 0.0;
+        in_data[i].data[j].Ax[k] = 0.0;
+        in_data[i].data[j].Ay[k] = 0.0;
+        in_data[i].data[j].Bx[k] = 1.0;
+        in_data[i].data[j].By[k] = 0.0;
+        in_data[i].data[j].Cx[k] = 0.5;
+        in_data[i].data[j].Cy[k] = 1.0;
+        out_data[i].data[j].Ux[k] = 0.0;
+        out_data[i].data[j].Uy[k] = 0.0;
       }
     }
   }
@@ -65,9 +68,9 @@ int main(void) {
   for (int i = 0; i < RUNS; i++) {
     t0 = rdtsc();
     for (int j = 0; j < KERNEL_ITERS; j++) {
-      // kernel0(&(data[j]), buffer);
-      // kernel1(&(data[j]), buffer);
-      baseline(&(data[j]));
+      kernel0(&(in_data[j]), buffer);
+      kernel1(&(out_data[j]), buffer);
+      // baseline(&(in_data[j]), &(out_data[j]));
     }
     t1 = rdtsc();
     sum += (t1 - t0);
@@ -76,12 +79,14 @@ int main(void) {
   printf(" %lf\n", (OPS) / ((double)(sum / (KERNEL_ITERS * RUNS)) *
                             (MAX_FREQ / BASE_FREQ)));
 
-  printf("First kernel: %f %f\n", data[0].data[0].Ux[0], data[0].data[0].Uy[0]);
+  printf("First kernel: %f %f\n", out_data[0].data[0].Ux[0],
+         out_data[0].data[0].Uy[0]);
   // printf("Second kernel: %f %f\n", data[1].data[0].Ux[0],
   //        data[1].data[0].Uy[0]);
 
   // Clean up
-  free(data);
+  free(in_data);
+  free(out_data);
   free(buffer);
 
   return 0;
