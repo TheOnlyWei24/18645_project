@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define BASE_FREQ 2.4
 
@@ -11,7 +12,7 @@
 
 #define RUNS 10000
 
-#define KERNEL_ITERS 2
+#define KERNEL_ITERS 18
 
 // kernel0 + kernel1
 // SIMD_SIZE * NUM_OPS * NUM ITER
@@ -24,6 +25,8 @@ static __inline__ unsigned long long rdtsc(void) {
 }
 
 int main(void) {
+  srand(time(NULL));
+
   // Set up data structures
   kernel_in_data_t *in_data;
   kernel_out_data_t *out_data;
@@ -39,12 +42,18 @@ int main(void) {
   for (int i = 0; i < KERNEL_ITERS; i++) {
     for (int j = 0; j < NUM_SIMD_IN_KERNEL; j++) {
       for (int k = 0; k < SIMD_SIZE; k++) {
-        in_data[i].data[j].Ax[k] = 0.0;
-        in_data[i].data[j].Ay[k] = 0.0;
-        in_data[i].data[j].Bx[k] = 1.0;
-        in_data[i].data[j].By[k] = 0.0;
-        in_data[i].data[j].Cx[k] = 0.5;
-        in_data[i].data[j].Cy[k] = 1.0;
+        // in_data[i].data[j].Ax[k] = 0.0;
+        // in_data[i].data[j].Ay[k] = 0.0;
+        // in_data[i].data[j].Bx[k] = 1.0;
+        // in_data[i].data[j].By[k] = 0.0;
+        // in_data[i].data[j].Cx[k] = 0.5;
+        // in_data[i].data[j].Cy[k] = 1.0;
+        in_data[i].data[j].Ax[k] = rand();
+        in_data[i].data[j].Ay[k] = rand();
+        in_data[i].data[j].Bx[k] = rand();
+        in_data[i].data[j].By[k] = rand();
+        in_data[i].data[j].Cx[k] = rand();
+        in_data[i].data[j].Cy[k] = rand();
         out_data[i].data[j].Ux[k] = 0.0;
         out_data[i].data[j].Uy[k] = 0.0;
       }
@@ -66,14 +75,14 @@ int main(void) {
 
   // Test kernels
   for (int i = 0; i < RUNS; i++) {
-    t0 = rdtsc();
     for (int j = 0; j < KERNEL_ITERS; j++) {
-      kernel0(&(in_data[j]), buffer);
-      kernel1(&(out_data[j]), buffer);
-      // baseline(&(in_data[j]), &(out_data[j]));
+      t0 = rdtsc();
+      // kernel0(&(in_data[j]), buffer);
+      // kernel1(&(out_data[j]), buffer);
+      baseline(&(in_data[j]), &(out_data[j]));
+      t1 = rdtsc();
+      sum += (t1 - t0);
     }
-    t1 = rdtsc();
-    sum += (t1 - t0);
   }
 
   printf(" %lf\n", (OPS) / ((double)(sum / (KERNEL_ITERS * RUNS)) *
