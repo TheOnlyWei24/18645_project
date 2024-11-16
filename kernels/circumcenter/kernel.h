@@ -5,15 +5,79 @@
 
 #define SIMD_SIZE 8
 
-void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
-             float *partUx, float *partUy, float *partD) {
+#define NUM_SIMD_IN_KERNEL 6
+
+struct data {
+  float Ax[SIMD_SIZE];
+  float Ay[SIMD_SIZE];
+  float Bx[SIMD_SIZE];
+  float By[SIMD_SIZE];
+  float Cx[SIMD_SIZE];
+  float Cy[SIMD_SIZE];
+  float Ux[SIMD_SIZE];
+  float Uy[SIMD_SIZE];
+};
+
+typedef struct data data_t;
+
+struct kernel_data {
+  data_t data[NUM_SIMD_IN_KERNEL];
+};
+
+typedef struct kernel_data kernel_data_t;
+
+struct buffer {
+  float partUx[SIMD_SIZE];
+  float partUy[SIMD_SIZE];
+  float partD[SIMD_SIZE];
+};
+
+typedef struct buffer buffer_t;
+
+struct kernel_buffer {
+  buffer_t buffer[NUM_SIMD_IN_KERNEL];
+};
+
+typedef struct kernel_buffer kernel_buffer_t;
+
+void baseline(kernel_data_t *restrict data) {
+  float Ax, Ay, Bx, By, Cx, Cy;
+  float Ax2_Ay2, Bx2_Bx2, Cx2_Cx2, D;
+
+  for (int i = 0; i < NUM_SIMD_IN_KERNEL; i++) {
+    for (int j = 0; j < SIMD_SIZE; j++) {
+      Ax = data->data[i].Ax[j];
+      Ay = data->data[i].Ay[j];
+      Bx = data->data[i].Bx[j];
+      By = data->data[i].By[j];
+      Cx = data->data[i].Cx[j];
+      Cy = data->data[i].Cy[j];
+      
+      Ax2_Ay2 = (Ax * Ax) + (Ay * Ay);
+      Bx2_Bx2 = (Bx * Bx) + (By * By);
+      Cx2_Cx2 = (Cx * Cx) + (Cy * Cy);
+
+      D = 2 * (((By - Cy) * Ax) + ((Cy - Ay) * Bx) +
+               ((Ay - By) * Cx));
+
+      data->data[i].Ux[j] = ((Ax2_Ay2 * (By - Cy)) + (Bx2_Bx2 * (Cy - Ay)) +
+                             (Cx2_Cx2 * (Ay - By))) / D;
+
+      data->data[i].Uy[j] = ((Ax2_Ay2 * (Cx - Bx)) + (Bx2_Bx2 * (Ax - Cx)) +
+                             (Cx2_Cx2 * (Bx - Ax))) / D;
+    }
+  }
+}
+
+
+static inline void kernel0(kernel_data_t *restrict data, kernel_buffer_t *restrict buffer) {
   // First half of first kernel
-  __m256 reg0 = _mm256_load_ps(Ax);
-  __m256 reg1 = _mm256_load_ps(Ay);
-  __m256 reg2 = _mm256_load_ps(Bx);
-  __m256 reg3 = _mm256_load_ps(By);
-  __m256 reg4 = _mm256_load_ps(Cx);
-  __m256 reg5 = _mm256_load_ps(Cy);
+  __m256 reg0 = _mm256_load_ps(data->data[0].Ax);
+  __m256 reg1 = _mm256_load_ps(data->data[0].Ay);
+  __m256 reg2 = _mm256_load_ps(data->data[0].Bx);
+  __m256 reg3 = _mm256_load_ps(data->data[0].By);
+  __m256 reg4 = _mm256_load_ps(data->data[0].Cx);
+  __m256 reg5 = _mm256_load_ps(data->data[0].Cy);
 
   __m256 reg6 = _mm256_mul_ps(reg0, reg0);  // Ax^2
   __m256 reg7 = _mm256_mul_ps(reg1, reg1);  // Ay^2
@@ -49,12 +113,12 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   // reg6, reg7, reg8 are free
   // reg12, reg13, reg14, reg 15 are free
   // Execute loads for second kernel in order to hide the latency
-  reg6 = _mm256_load_ps(Ax + SIMD_SIZE);
-  reg7 = _mm256_load_ps(Ay + SIMD_SIZE);
-  reg8 = _mm256_load_ps(Bx + SIMD_SIZE);
-  __m256 reg12 = _mm256_load_ps(By + SIMD_SIZE);
-  __m256 reg13 = _mm256_load_ps(Cx + SIMD_SIZE);
-  __m256 reg14 = _mm256_load_ps(Cy + SIMD_SIZE);
+  reg6 = _mm256_load_ps(data->data[1].Ax);
+  reg7 = _mm256_load_ps(data->data[1].Ay);
+  reg8 = _mm256_load_ps(data->data[1].Bx);
+  __m256 reg12 = _mm256_load_ps(data->data[1].By);
+  __m256 reg13 = _mm256_load_ps(data->data[1].Cx);
+  __m256 reg14 = _mm256_load_ps(data->data[1].Cy);
 
   // Finish second half of first kernel
   reg0 = _mm256_add_ps(reg0, reg2);  // D0 + D1
@@ -65,9 +129,9 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg2 = _mm256_add_ps(reg2, reg11); // Ux0 + Ux1 + Ux2
   reg1 = _mm256_add_ps(reg1, reg5);  // Uy0 + Uy1 + Uy2
 
-  _mm256_store_ps(partD, reg0);
-  _mm256_store_ps(partUx, reg2);
-  _mm256_store_ps(partUy, reg1);
+  _mm256_store_ps(buffer->buffer[0].partD, reg0);
+  _mm256_store_ps(buffer->buffer[0].partUx, reg2);
+  _mm256_store_ps(buffer->buffer[0].partUy, reg1);
 
   // All reg except 6, 7, 8, 12, 13, 14 are free
   // Begin execution of second kernel
@@ -119,12 +183,12 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
 
   // reg0, reg1, reg2, reg3, reg4, reg5 are free
   // Execute loads for 3rd kernel
-  reg0 = _mm256_load_ps(Ax + (2 * SIMD_SIZE));
-  reg1 = _mm256_load_ps(Ay + (2 * SIMD_SIZE));
-  reg2 = _mm256_load_ps(Bx + (2 * SIMD_SIZE));
-  reg3 = _mm256_load_ps(By + (2 * SIMD_SIZE));
-  reg4 = _mm256_load_ps(Cx + (2 * SIMD_SIZE));
-  reg5 = _mm256_load_ps(Cy + (2 * SIMD_SIZE));
+  reg0 = _mm256_load_ps(data->data[2].Ax);
+  reg1 = _mm256_load_ps(data->data[2].Ay);
+  reg2 = _mm256_load_ps(data->data[2].Bx);
+  reg3 = _mm256_load_ps(data->data[2].By);
+  reg4 = _mm256_load_ps(data->data[2].Cx);
+  reg5 = _mm256_load_ps(data->data[2].Cy);
 
   reg7 = _mm256_add_ps(reg7, reg12);
   reg6 = _mm256_add_ps(reg6, reg8);
@@ -134,9 +198,9 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg6 = _mm256_add_ps(reg6, reg13);
   reg9 = _mm256_add_ps(reg9, reg11);
 
-  _mm256_store_ps(partD + SIMD_SIZE, reg7);
-  _mm256_store_ps(partUx + SIMD_SIZE, reg6);
-  _mm256_store_ps(partUy + SIMD_SIZE, reg9);
+  _mm256_store_ps(buffer->buffer[1].partD, reg7);
+  _mm256_store_ps(buffer->buffer[1].partUx, reg6);
+  _mm256_store_ps(buffer->buffer[1].partUy, reg9);
 
   /*** *** *** *** *** *** *** *** ***/
 
@@ -171,12 +235,12 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg3 = _mm256_mul_ps(reg7, reg3);
   reg5 = _mm256_mul_ps(reg8, reg5);
 
-  reg6 = _mm256_load_ps(Ax + (3 * SIMD_SIZE));
-  reg7 = _mm256_load_ps(Ay + (3 * SIMD_SIZE));
-  reg8 = _mm256_load_ps(Bx + (3 * SIMD_SIZE));
-  reg12 = _mm256_load_ps(By + (3 * SIMD_SIZE));
-  reg13 = _mm256_load_ps(Cx + (3 * SIMD_SIZE));
-  reg14 = _mm256_load_ps(Cy + (3 * SIMD_SIZE));
+  reg6 = _mm256_load_ps(data->data[3].Ax);
+  reg7 = _mm256_load_ps(data->data[3].Ay);
+  reg8 = _mm256_load_ps(data->data[3].Bx);
+  reg12 = _mm256_load_ps(data->data[3].By);
+  reg13 = _mm256_load_ps(data->data[3].Cx);
+  reg14 = _mm256_load_ps(data->data[3].Cy);
 
   reg0 = _mm256_add_ps(reg0, reg2);
   reg2 = _mm256_add_ps(reg9, reg10);
@@ -186,9 +250,9 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg2 = _mm256_add_ps(reg2, reg11);
   reg1 = _mm256_add_ps(reg1, reg5);
 
-  _mm256_store_ps(partD + (2 * SIMD_SIZE), reg0);
-  _mm256_store_ps(partUx + (2 * SIMD_SIZE), reg2);
-  _mm256_store_ps(partUy + (2 * SIMD_SIZE), reg1);
+  _mm256_store_ps(buffer->buffer[2].partD, reg0);
+  _mm256_store_ps(buffer->buffer[2].partUx, reg2);
+  _mm256_store_ps(buffer->buffer[2].partUy, reg1);
 
   reg0 = _mm256_mul_ps(reg6, reg6);
   reg1 = _mm256_mul_ps(reg7, reg7);
@@ -221,12 +285,12 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg10 = _mm256_mul_ps(reg4, reg10);
   reg11 = _mm256_mul_ps(reg5, reg11);
 
-  reg0 = _mm256_load_ps(Ax + (4 * SIMD_SIZE));
-  reg1 = _mm256_load_ps(Ay + (4 * SIMD_SIZE));
-  reg2 = _mm256_load_ps(Bx + (4 * SIMD_SIZE));
-  reg3 = _mm256_load_ps(By + (4 * SIMD_SIZE));
-  reg4 = _mm256_load_ps(Cx + (4 * SIMD_SIZE));
-  reg5 = _mm256_load_ps(Cy + (4 * SIMD_SIZE));
+  reg0 = _mm256_load_ps(data->data[4].Ax);
+  reg1 = _mm256_load_ps(data->data[4].Ay);
+  reg2 = _mm256_load_ps(data->data[4].Bx);
+  reg3 = _mm256_load_ps(data->data[4].By);
+  reg4 = _mm256_load_ps(data->data[4].Cx);
+  reg5 = _mm256_load_ps(data->data[4].Cy);
 
   reg7 = _mm256_add_ps(reg7, reg12);
   reg6 = _mm256_add_ps(reg6, reg8);
@@ -236,9 +300,9 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg6 = _mm256_add_ps(reg6, reg13);
   reg9 = _mm256_add_ps(reg9, reg11);
 
-  _mm256_store_ps(partD + (3 * SIMD_SIZE), reg7);
-  _mm256_store_ps(partUx + (3 * SIMD_SIZE), reg6);
-  _mm256_store_ps(partUy + (3 * SIMD_SIZE), reg9);
+  _mm256_store_ps(buffer->buffer[3].partD, reg7);
+  _mm256_store_ps(buffer->buffer[3].partUx, reg6);
+  _mm256_store_ps(buffer->buffer[3].partUy, reg9);
 
   /*** *** *** *** *** *** *** *** ***/
 
@@ -273,12 +337,12 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg3 = _mm256_mul_ps(reg7, reg3);
   reg5 = _mm256_mul_ps(reg8, reg5);
 
-  reg6 = _mm256_load_ps(Ax + (5 * SIMD_SIZE));
-  reg7 = _mm256_load_ps(Ay + (5 * SIMD_SIZE));
-  reg8 = _mm256_load_ps(Bx + (5 * SIMD_SIZE));
-  reg12 = _mm256_load_ps(By + (5 * SIMD_SIZE));
-  reg13 = _mm256_load_ps(Cx + (5 * SIMD_SIZE));
-  reg14 = _mm256_load_ps(Cy + (5 * SIMD_SIZE));
+  reg6 = _mm256_load_ps(data->data[5].Ax);
+  reg7 = _mm256_load_ps(data->data[5].Ay);
+  reg8 = _mm256_load_ps(data->data[5].Bx);
+  reg12 = _mm256_load_ps(data->data[5].By);
+  reg13 = _mm256_load_ps(data->data[5].Cx);
+  reg14 = _mm256_load_ps(data->data[5].Cy);
 
   reg0 = _mm256_add_ps(reg0, reg2);
   reg2 = _mm256_add_ps(reg9, reg10);
@@ -288,9 +352,9 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg2 = _mm256_add_ps(reg2, reg11);
   reg1 = _mm256_add_ps(reg1, reg5);
 
-  _mm256_store_ps(partD + (4 * SIMD_SIZE), reg0);
-  _mm256_store_ps(partUx + (4 * SIMD_SIZE), reg2);
-  _mm256_store_ps(partUy + (4 * SIMD_SIZE), reg1);
+  _mm256_store_ps(buffer->buffer[4].partD, reg0);
+  _mm256_store_ps(buffer->buffer[4].partUx, reg2);
+  _mm256_store_ps(buffer->buffer[4].partUy, reg1);
 
   reg0 = _mm256_mul_ps(reg6, reg6);
   reg1 = _mm256_mul_ps(reg7, reg7);
@@ -338,20 +402,20 @@ void kernel0(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg6 = _mm256_add_ps(reg6, reg13);
   reg9 = _mm256_add_ps(reg9, reg11);
 
-  _mm256_store_ps(partD + (5 * SIMD_SIZE), reg7);
-  _mm256_store_ps(partUx + (5 * SIMD_SIZE), reg6);
-  _mm256_store_ps(partUy + (5 * SIMD_SIZE), reg9);
+  _mm256_store_ps(buffer->buffer[5].partD, reg7);
+  _mm256_store_ps(buffer->buffer[5].partUx, reg6);
+  _mm256_store_ps(buffer->buffer[5].partUy, reg9);
 }
 
-void kernel1(float *partD, float *partUx, float *partUy, float *Ux, float *Uy) {
+static inline void kernel1(kernel_data_t *restrict data, kernel_buffer_t *restrict buffer) {
   float two[] = {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0};
   __m256 reg0 = _mm256_load_ps(&two[0]);
-  __m256 reg1 = _mm256_load_ps(partD); // D = partD / 2
-  __m256 reg2 = _mm256_load_ps(partD + SIMD_SIZE);
-  __m256 reg3 = _mm256_load_ps(partD + (2 * SIMD_SIZE));
-  __m256 reg4 = _mm256_load_ps(partD + (3 * SIMD_SIZE));
-  __m256 reg5 = _mm256_load_ps(partD + (4 * SIMD_SIZE));
-  __m256 reg6 = _mm256_load_ps(partD + (5 * SIMD_SIZE));
+  __m256 reg1 = _mm256_load_ps(buffer->buffer[0].partD); // D = partD / 2
+  __m256 reg2 = _mm256_load_ps(buffer->buffer[1].partD);
+  __m256 reg3 = _mm256_load_ps(buffer->buffer[2].partD);
+  __m256 reg4 = _mm256_load_ps(buffer->buffer[3].partD);
+  __m256 reg5 = _mm256_load_ps(buffer->buffer[4].partD);
+  __m256 reg6 = _mm256_load_ps(buffer->buffer[5].partD);
 
   reg1 = _mm256_mul_ps(reg1, reg0);
   reg2 = _mm256_mul_ps(reg2, reg0);
@@ -360,48 +424,48 @@ void kernel1(float *partD, float *partUx, float *partUy, float *Ux, float *Uy) {
   reg5 = _mm256_mul_ps(reg5, reg0);
   reg6 = _mm256_mul_ps(reg6, reg0);
 
-  __m256 reg7 = _mm256_load_ps(partUx);
-  __m256 reg8 = _mm256_load_ps(partUy);
+  __m256 reg7 = _mm256_load_ps(buffer->buffer[0].partUx);
+  __m256 reg8 = _mm256_load_ps(buffer->buffer[0].partUy);
   reg7 = _mm256_div_ps(reg7, reg1); // Ux = partUx / D
   reg8 = _mm256_div_ps(reg8, reg1); // Uy = partUy / D
 
-  __m256 reg9 = _mm256_load_ps(partUx + SIMD_SIZE);
-  __m256 reg10 = _mm256_load_ps(partUy + SIMD_SIZE);
+  __m256 reg9 = _mm256_load_ps(buffer->buffer[1].partUx);
+  __m256 reg10 = _mm256_load_ps(buffer->buffer[1].partUy);
   reg9 = _mm256_div_ps(reg9, reg2);
   reg10 = _mm256_div_ps(reg10, reg2);
 
-  __m256 reg11 = _mm256_load_ps(partUx + (2 * SIMD_SIZE));
-  __m256 reg12 = _mm256_load_ps(partUy + (2 * SIMD_SIZE));
+  __m256 reg11 = _mm256_load_ps(buffer->buffer[2].partUx);
+  __m256 reg12 = _mm256_load_ps(buffer->buffer[2].partUy);
   reg11 = _mm256_div_ps(reg11, reg3);
   reg12 = _mm256_div_ps(reg12, reg3);
 
-  __m256 reg13 = _mm256_load_ps(partUx + (3 * SIMD_SIZE));
-  __m256 reg14 = _mm256_load_ps(partUy + (3 * SIMD_SIZE));
+  __m256 reg13 = _mm256_load_ps(buffer->buffer[3].partUx);
+  __m256 reg14 = _mm256_load_ps(buffer->buffer[3].partUy);
   reg13 = _mm256_div_ps(reg13, reg4);
   reg14 = _mm256_div_ps(reg14, reg4);
 
-  __m256 reg15 = _mm256_load_ps(partUx + (4 * SIMD_SIZE));
-  reg0 = _mm256_load_ps(partUy + (4 * SIMD_SIZE));
+  __m256 reg15 = _mm256_load_ps(buffer->buffer[4].partUx);
+  reg0 = _mm256_load_ps(buffer->buffer[4].partUy);
   reg15 = _mm256_div_ps(reg15, reg5);
   reg0 = _mm256_div_ps(reg0, reg5);
 
-  reg1 = _mm256_load_ps(partUx + (5 * SIMD_SIZE));
-  reg2 = _mm256_load_ps(partUy + (5 * SIMD_SIZE));
+  reg1 = _mm256_load_ps(buffer->buffer[5].partUx);
+  reg2 = _mm256_load_ps(buffer->buffer[5].partUy);
   reg1 = _mm256_div_ps(reg1, reg6);
   reg2 = _mm256_div_ps(reg2, reg6);
 
-  _mm256_store_ps(Ux, reg7);
-  _mm256_store_ps(Uy, reg8);
-  _mm256_store_ps(Ux + SIMD_SIZE, reg9);
-  _mm256_store_ps(Uy + SIMD_SIZE, reg10);
-  _mm256_store_ps(Ux + (2 * SIMD_SIZE), reg11);
-  _mm256_store_ps(Uy + (2 * SIMD_SIZE), reg12);
-  _mm256_store_ps(Ux + (3 * SIMD_SIZE), reg13);
-  _mm256_store_ps(Uy + (3 * SIMD_SIZE), reg14);
-  _mm256_store_ps(Ux + (4 * SIMD_SIZE), reg15);
-  _mm256_store_ps(Uy + (4 * SIMD_SIZE), reg0);
-  _mm256_store_ps(Ux + (5 * SIMD_SIZE), reg1);
-  _mm256_store_ps(Uy + (5 * SIMD_SIZE), reg2);
+  _mm256_store_ps(data->data[0].Ux, reg7);
+  _mm256_store_ps(data->data[0].Uy, reg8);
+  _mm256_store_ps(data->data[1].Ux, reg9);
+  _mm256_store_ps(data->data[1].Uy, reg10);
+  _mm256_store_ps(data->data[2].Ux, reg11);
+  _mm256_store_ps(data->data[2].Uy, reg12);
+  _mm256_store_ps(data->data[3].Ux, reg13);
+  _mm256_store_ps(data->data[3].Uy, reg14);
+  _mm256_store_ps(data->data[4].Ux, reg15);
+  _mm256_store_ps(data->data[4].Uy, reg0);
+  _mm256_store_ps(data->data[5].Ux, reg1);
+  _mm256_store_ps(data->data[5].Uy, reg2);
 }
 
 #endif

@@ -1,4 +1,3 @@
-#include "baseline.h"
 #include "kernel.h"
 #include <math.h>
 #include <stdio.h>
@@ -10,9 +9,9 @@
 
 #define ALIGNMENT 64
 
-#define NUM_ELEMS 6
+#define RUNS 10000
 
-#define RUNS 100000
+#define KERNEL_ITERS 1
 
 // kernel0 + kernel1
 // SIMD_SIZE * NUM_OPS * NUM ITER
@@ -26,54 +25,36 @@ static __inline__ unsigned long long rdtsc(void) {
 
 int main(void) {
   // Set up data structures
-  float *Ax;
-  float *Ay;
-  float *Bx;
-  float *By;
-  float *Cx;
-  float *Cy;
-  float *partUx;
-  float *partUy;
-  float *partD;
-  float *Ux;
-  float *Uy;
+  kernel_data_t *data;
+  kernel_buffer_t *buffer;
 
-  posix_memalign((void **)&Ax, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Ay, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Bx, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&By, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Cx, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Cy, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&partUx, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&partUy, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&partD, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Ux, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Uy, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  posix_memalign((void **)&data, ALIGNMENT,
+                 KERNEL_ITERS * sizeof(kernel_data_t));
+  posix_memalign((void **)&buffer, ALIGNMENT, sizeof(kernel_buffer_t));
 
   // Initialize data
-  for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++) {
-    Ax[i] = 0.0;
-    Ay[i] = 0.0;
-    Bx[i] = 1.0;
-    By[i] = 0.0;
-    Cx[i] = 0.5;
-    Cy[i] = 1.0;
-    partUx[i] = 0.0;
-    partUy[i] = 0.0;
-    partD[i] = 0.0;
-    Ux[i] = 0.0;
-    Uy[i] = 0.0;
+  for (int i = 0; i < KERNEL_ITERS; i++) {
+    for (int j = 0; j < NUM_SIMD_IN_KERNEL; j++) {
+      for (int k = 0; k < SIMD_SIZE; k++) {
+        data[i].data[j].Ax[k] = 0.0;
+        data[i].data[j].Ay[k] = 0.0;
+        data[i].data[j].Bx[k] = 1.0;
+        data[i].data[j].By[k] = 0.0;
+        data[i].data[j].Cx[k] = 0.5;
+        data[i].data[j].Cy[k] = 1.0;
+        data[i].data[j].Ux[k] = 0.0;
+        data[i].data[j].Uy[k] = 0.0;
+      }
+    }
+  }
+
+  // Initialize buffer
+  for (int i = 0; i < NUM_SIMD_IN_KERNEL; i++) {
+    for (int j = 0; j < SIMD_SIZE; j++) {
+      buffer->buffer[i].partUx[j] = 0.0;
+      buffer->buffer[i].partUy[j] = 0.0;
+      buffer->buffer[i].partD[j] = 0.0;
+    }
   }
 
   unsigned long long sum, t0, t1;
@@ -83,35 +64,25 @@ int main(void) {
   // Test kernels
   for (int i = 0; i < RUNS; i++) {
     t0 = rdtsc();
-    // kernel0(Ax, Ay, Bx, By, Cx, Cy, partUx, partUy, partD);
-    // kernel1(partD, partUx, partUy, Ux, Uy);
-    baseline(Ax, Ay, Bx, By, Cx, Cy, Ux, Uy);
+    for (int j = 0; j < KERNEL_ITERS; j++) {
+      // kernel0(&(data[j]), buffer);
+      // kernel1(&(data[j]), buffer);
+      baseline(&(data[j]));
+    }
     t1 = rdtsc();
     sum += (t1 - t0);
   }
 
-  printf(" %lf\n",
-         (OPS) / ((double)(sum / (1.0 * RUNS)) * (MAX_FREQ / BASE_FREQ)));
+  printf(" %lf\n", (OPS) / ((double)(sum / (KERNEL_ITERS * RUNS)) *
+                            (MAX_FREQ / BASE_FREQ)));
 
-  printf("First kernel: %f %f\n", Ux[0], Uy[0]);
-  printf("Second kernel: %f %f\n", Ux[SIMD_SIZE], Uy[SIMD_SIZE]);
-  printf("Third kernel: %f %f\n", Ux[2 * SIMD_SIZE], Uy[2 * SIMD_SIZE]);
-  printf("Fourth kernel: %f %f\n", Ux[3 * SIMD_SIZE], Uy[3 * SIMD_SIZE]);
-  printf("Fifth kernel: %f %f\n", Ux[4 * SIMD_SIZE], Uy[4 * SIMD_SIZE]);
-  printf("Sixth kernel: %f %f\n", Ux[5 * SIMD_SIZE], Uy[5 * SIMD_SIZE]);
+  printf("First kernel: %f %f\n", data[0].data[0].Ux[0], data[0].data[0].Uy[0]);
+  // printf("Second kernel: %f %f\n", data[1].data[0].Ux[0],
+  //        data[1].data[0].Uy[0]);
 
   // Clean up
-  free(Ax);
-  free(Ay);
-  free(Bx);
-  free(By);
-  free(Cx);
-  free(Cy);
-  free(partUx);
-  free(partUy);
-  free(partD);
-  free(Ux);
-  free(Uy);
+  free(data);
+  free(buffer);
 
   return 0;
 }
