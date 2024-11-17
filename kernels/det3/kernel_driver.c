@@ -17,7 +17,7 @@ static __inline__ unsigned long long rdtsc(void) {
   __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
   return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
 }
-void kernel2(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy, float *Dx, float *Dy, float *out);
+void kernel2(float * restrict Ax, float * restrict Ay, float * restrict Bx, float * restrict By, float * restrict Cx, float * restrict Cy, float * restrict Dx, float * restrict Dy, float * restrict out);
 
 void kernel
 (
@@ -61,8 +61,8 @@ void check
   }
  }
 
- void baseline(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
-              float *Dx, float *Dy, float *out) {
+ void baseline(float * restrict Ax, float * restrict Ay, float * restrict Bx, float * restrict By, float * restrict Cx, float * restrict Cy,
+              float * restrict Dx, float * restrict Dy, float * restrict out) {
   for (int z = 0; z < (8 * NUM_ELEMS); z++) {
     float a = Ax[z] - Dx[z];
     float b = Ay[z] - Dy[z];
@@ -144,7 +144,45 @@ int main(){
   
   for (int r = 0; r<RUNS; r++){
 
-    
+    // srand((unsigned int)time(NULL));
+    // float scale = 64;
+    // float shift = 32;
+    // //initialize A
+    // for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++){
+    //   Ax[i] = (((float) rand())/ ((float) RAND_MAX))*scale - shift;
+    //   Ay[i] = (((float) rand())/ ((float) RAND_MAX))*scale - shift;
+    // }
+    // //initialize B
+    // for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++){
+    //   Bx[i] = (((float) rand())/ ((float) RAND_MAX))*scale - shift;
+    //   By[i] = (((float) rand())/ ((float) RAND_MAX))*scale - shift;
+    // }
+    // //initialize C
+    // for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++){
+    //   Cx[i] = (((float) rand())/ ((float) RAND_MAX))*scale - shift;
+    //   Cy[i] = (((float) rand())/ ((float) RAND_MAX))*scale - shift;
+    // }
+
+    // //initialize D
+    // for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++){
+    //   Dx[i] = (((float) rand())/ ((float) RAND_MAX))*scale - shift;
+    //   Dy[i] = (((float) rand())/ ((float) RAND_MAX))*scale - shift;
+    // }
+    // //initialize output
+    // for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++){
+    //   kernel1_out[i] = 0.0;
+    //   kernel2_out[i] = 0.0;
+    //   res[i] = 0.0;
+    // }
+    //t4 = rdtsc();
+    //check(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, res);
+    //t5 = rdtsc();
+    // sum_check += (t5 - t4);
+
+    t4 = rdtsc();
+    check(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, res);
+    t5 = rdtsc();
+    sum_check += (t5 - t4);
 
     t0 = rdtsc();
     kernel(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, kernel1_out);
@@ -160,16 +198,11 @@ int main(){
     }
     t3 = rdtsc();
     sum_kernel2 += (t3 - t2); 
-
-    t4 = rdtsc();
-    check(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, res);
-    t5 = rdtsc();
-    sum_check += (t5 - t4); 
   }
 
   int correct = 1;
   for (int i = 0; i != NUM_ELEMS * SIMD_SIZE; ++i) {
-    correct &= (fabs(kernel1_out[i] - res[i]) < 1e-13);
+    correct &= (fabs(kernel2_out[i] - res[i]) < 1e-13);
   }
 
   printf("check cycles/RUNS: %llu\n", sum_check / RUNS);

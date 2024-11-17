@@ -7,8 +7,8 @@ static const int SIMD_SIZE = 8;
 static const int NUM_ELEMS = 4;
 static const int KERNEL_SIZE = 2*SIMD_SIZE;
 
-void kernel2(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
-            float *Dx, float *Dy, float *out) {
+void kernel2(float * restrict Ax, float * restrict Ay, float * restrict Bx, float * restrict By, float * restrict Cx, float * restrict Cy,
+            float * restrict Dx, float * restrict Dy, float * restrict out) {
 
   /*---------------------------------------------------------------------------
                           Starting 1st kernel
@@ -44,7 +44,7 @@ void kernel2(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg14 = _mm256_mul_ps(reg5, reg13); // f * h
   reg15 = _mm256_mul_ps(reg5, reg12); // f * g
   reg0 = _mm256_mul_ps(reg10, reg6);  // d * i
-  reg1 = _mm256_mul_ps(reg10, reg12); // d * g
+  reg1 = _mm256_mul_ps(reg10, reg13); // d * h
   reg2 = _mm256_mul_ps(reg11, reg12); // e * g
 
   reg3 = _mm256_sub_ps(reg7, reg14); // (e * i) - (f * h)
@@ -53,7 +53,7 @@ void kernel2(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
 
   reg13 = _mm256_mul_ps(reg3, reg8); // out0 = a * ((e * i) - (f * h))
   reg14 = _mm256_mul_ps(reg5, reg9); // out1 = b * ((f * g) - (d * i))
-  reg15 = _mm256_mul_ps(reg6, reg4); // out2 = c * ((d * g) - (e * g))
+  reg15 = _mm256_mul_ps(reg6, reg4); // out2 = c * ((d * h) - (e * g))
 
   // TODO: figure out what registers are free
   // reg8, reg9, reg10 are required -- all others are free
@@ -106,12 +106,12 @@ void kernel2(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg14 = _mm256_mul_ps(reg5, reg13); // f * h
   reg15 = _mm256_mul_ps(reg5, reg12); // f * g
   reg0 = _mm256_mul_ps(reg10, reg6);  // d * i
-  reg1 = _mm256_mul_ps(reg10, reg12); // d * g
+  reg1 = _mm256_mul_ps(reg10, reg13); // d * h
   reg2 = _mm256_mul_ps(reg11, reg12); // e * g
 
   reg3 = _mm256_sub_ps(reg7, reg14); // (e * i) - (f * h)
   reg5 = _mm256_sub_ps(reg15, reg0); // (f * g) - (d * i)
-  reg6 = _mm256_sub_ps(reg1, reg2);  // (d * g) - (e * g)
+  reg6 = _mm256_sub_ps(reg1, reg2);  // (d * h) - (e * g)
 
   reg13 = _mm256_mul_ps(reg3, reg8); // out0 = a * ((e * i) - (f * h))
   reg14 = _mm256_mul_ps(reg5, reg9); // out1 = b * ((f * g) - (d * i))
@@ -165,12 +165,12 @@ void kernel2(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg14 = _mm256_mul_ps(reg5, reg13); // f * h
   reg15 = _mm256_mul_ps(reg5, reg12); // f * g
   reg0 = _mm256_mul_ps(reg10, reg6);  // d * i
-  reg1 = _mm256_mul_ps(reg10, reg12); // d * g
+  reg1 = _mm256_mul_ps(reg10, reg13); // d * h
   reg2 = _mm256_mul_ps(reg11, reg12); // e * g
 
   reg3 = _mm256_sub_ps(reg7, reg14); // (e * i) - (f * h)
   reg5 = _mm256_sub_ps(reg15, reg0); // (f * g) - (d * i)
-  reg6 = _mm256_sub_ps(reg1, reg2);  // (d * g) - (e * g)
+  reg6 = _mm256_sub_ps(reg1, reg2);  // (d * h) - (e * g)
 
   reg13 = _mm256_mul_ps(reg3, reg8); // out0 = a * ((e * i) - (f * h))
   reg14 = _mm256_mul_ps(reg5, reg9); // out1 = b * ((f * g) - (d * i))
@@ -224,12 +224,12 @@ void kernel2(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
   reg14 = _mm256_mul_ps(reg5, reg13); // f * h
   reg15 = _mm256_mul_ps(reg5, reg12); // f * g
   reg0 = _mm256_mul_ps(reg10, reg6);  // d * i
-  reg1 = _mm256_mul_ps(reg10, reg12); // d * g
+  reg1 = _mm256_mul_ps(reg10, reg13); // d * h
   reg2 = _mm256_mul_ps(reg11, reg12); // e * g
 
   reg3 = _mm256_sub_ps(reg7, reg14); // (e * i) - (f * h)
   reg5 = _mm256_sub_ps(reg15, reg0); // (f * g) - (d * i)
-  reg6 = _mm256_sub_ps(reg1, reg2);  // (d * g) - (e * g)
+  reg6 = _mm256_sub_ps(reg1, reg2);  // (d * h) - (e * g)
 
   reg13 = _mm256_mul_ps(reg3, reg8); // out0 = a * ((e * i) - (f * h))
   reg14 = _mm256_mul_ps(reg5, reg9); // out1 = b * ((f * g) - (d * i))
