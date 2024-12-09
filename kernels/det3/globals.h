@@ -7,6 +7,6 @@
 #define RUNS 10000
 #define MAX_FREQ 3.4
 #define BASE_FREQ 2.4
-#define ALIGNMENT 32
+#define ALIGNMENT 64
 
 #endif
