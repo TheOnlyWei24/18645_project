@@ -1,11 +1,7 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <immintrin.h>
+#ifndef _DET3_KERNEL2_H_
+#define __DET3_KERNEL2_H_
 
-static const int SIMD_SIZE = 8;
-static const int NUM_ELEMS = 4;
-static const int KERNEL_SIZE = 2*SIMD_SIZE;
+#include <immintrin.h>
 
 void kernel2(float * restrict Ax, float * restrict Ay, float * restrict Bx, float * restrict By, float * restrict Cx, float * restrict Cy,
             float * restrict Dx, float * restrict Dy, float * restrict out) {
@@ -243,3 +239,5 @@ void kernel2(float * restrict Ax, float * restrict Ay, float * restrict Bx, floa
   reg15 = _mm256_add_ps(reg13, reg15); // out0 + out1 + out2
   _mm256_store_ps(out + (3 * SIMD_SIZE), reg15);       // store out
             }
+
+#endif

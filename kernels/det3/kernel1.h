@@ -1,11 +1,7 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <immintrin.h>
+#ifndef _DET3_KERNEL1_H_
+#define __DET3_KERNEL1_H_
 
-static const int SIMD_SIZE = 8;
-static const int NUM_ELEMS = 1024;
-static const int KERNEL_SIZE = 2*SIMD_SIZE;
+#include <immintrin.h>
 
 static inline void kernel_sub
 (
@@ -46,6 +42,7 @@ static inline void kernel_sub
   reg14 = _mm256_load_ps(&Dx[SIMD_SIZE]);
   reg15 = _mm256_load_ps(&Dy[SIMD_SIZE]);
 
+  __asm__ volatile("" ::: "memory");
   // Ax - Dx
   reg0 =   _mm256_sub_ps(reg0, reg6);
   reg8 =   _mm256_sub_ps(reg8, reg14);
@@ -64,6 +61,8 @@ static inline void kernel_sub
   // Cy - Dy
   reg5 =   _mm256_sub_ps(reg5, reg7);
   reg13 =  _mm256_sub_ps(reg13, reg15);
+
+  __asm__ volatile("" ::: "memory");
 
   // // Store a
   a[0] = reg0;
@@ -142,6 +141,8 @@ static inline void kernel_square_add
   // i = g^2 + h^2
   reg4 = _mm256_add_ps(reg4, reg5);
   reg10 = _mm256_add_ps(reg10, reg11);
+
+  __asm__ volatile("" ::: "memory");
 
   // Store c
   c[0] = reg0;
@@ -280,32 +281,57 @@ void kernel
   __m256 reg0, reg1, reg2, reg3, reg4, reg5;
   int idx = 0;
 
-  for (int p = 0; p < (int)((NUM_ELEMS*SIMD_SIZE)/KERNEL_SIZE); p++){
-    idx = KERNEL_SIZE*p;
+  // for (int p = 0; p < (int)((NUM_ELEMS*SIMD_SIZE)/KERNEL_SIZE); p++){
+  //   idx = KERNEL_SIZE*p;
     
-    // part 1
-    kernel_sub(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], &Dx[idx], &Dy[idx], \
-              a, b, d, e, g, h);
-    kernel_square_add(a, b, c, d, e, f, g, h, i);
-    kernel_det2(a, b, c, d, e, f, g, h, i, \
-               det2_out1, det2_out2, det2_out3);
+  //   // part 1
+  //   kernel_sub(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], &Dx[idx], &Dy[idx], \
+  //             a, b, d, e, g, h);
+  //   kernel_square_add(a, b, c, d, e, f, g, h, i);
+  //   kernel_det2(a, b, c, d, e, f, g, h, i, \
+  //              det2_out1, det2_out2, det2_out3);
 
-    // part 2
-    reg0 = det2_out1[0];
-    reg1 = det2_out1[1];
-    reg2 = det2_out2[0];
-    reg3 = det2_out2[1];
-    reg4 = det2_out3[0];
-    reg5 = det2_out3[1];
+  //   // part 2
+  //   reg0 = det2_out1[0];
+  //   reg1 = det2_out1[1];
+  //   reg2 = det2_out2[0];
+  //   reg3 = det2_out2[1];
+  //   reg4 = det2_out3[0];
+  //   reg5 = det2_out3[1];
 
-    reg0 = _mm256_add_ps(reg0, reg2);
-    reg1 = _mm256_add_ps(reg1, reg3);
-    reg0 = _mm256_add_ps(reg0, reg4);
-    reg1 = _mm256_add_ps(reg1, reg5);
-    // CMP
+  //   reg0 = _mm256_add_ps(reg0, reg2);
+  //   reg1 = _mm256_add_ps(reg1, reg3);
+  //   reg0 = _mm256_add_ps(reg0, reg4);
+  //   reg1 = _mm256_add_ps(reg1, reg5);
 
-    // Store det3_out
-    _mm256_store_ps(&det3_out[idx], reg0);
-    _mm256_store_ps(&det3_out[idx+SIMD_SIZE], reg1);
-  }
+  //   // Store det3_out
+  //   _mm256_store_ps(&det3_out[idx], reg0);
+  //   _mm256_store_ps(&det3_out[idx+SIMD_SIZE], reg1);
+  // }
+
+  // part 1
+  kernel_sub(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, \
+            a, b, d, e, g, h);
+  kernel_square_add(a, b, c, d, e, f, g, h, i);
+  kernel_det2(a, b, c, d, e, f, g, h, i, \
+              det2_out1, det2_out2, det2_out3);
+
+  // part 2
+  reg0 = det2_out1[0];
+  reg1 = det2_out1[1];
+  reg2 = det2_out2[0];
+  reg3 = det2_out2[1];
+  reg4 = det2_out3[0];
+  reg5 = det2_out3[1];
+
+  reg0 = _mm256_add_ps(reg0, reg2);
+  reg1 = _mm256_add_ps(reg1, reg3);
+  reg0 = _mm256_add_ps(reg0, reg4);
+  reg1 = _mm256_add_ps(reg1, reg5);
+
+  // Store det3_out
+  _mm256_store_ps(&det3_out[0], reg0);
+  _mm256_store_ps(&det3_out[0+SIMD_SIZE], reg1);
 }
+
+#endif

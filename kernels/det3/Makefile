@@ -1,6 +1,6 @@
 
 CC		= gcc
-CC_FLAGS 	= -O1 -std=c99 -march=native -mfma -mavx -mavx2
+CC_FLAGS 	= -O3 -std=c99 -march=native -mfma -mavx -mavx2
 RM 		= rm -f
 
 default: all assemble
@@ -12,7 +12,7 @@ kernel: kernel_driver.x
 	./kernel_driver.x
 
 kernel_driver.x:
-	$(CC) $(CC_FLAGS) -o kernel_driver.x kernel_driver.c kernel.c
+	$(CC) $(CC_FLAGS) -o kernel_driver.x kernel_driver.c
 
 
 assemble:
