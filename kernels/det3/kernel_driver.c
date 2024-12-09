@@ -61,7 +61,7 @@ int main(){
 
   for (int t=0; t<10; t++){
     //int NUM_ELEMS = data_dim[t];
-    int NUM_ELEMS = 32768;
+    int NUM_ELEMS = 65536;
     NUM_THREADS = threads[t];
     //create memory aligned buffers
     posix_memalign((void**) &Ax, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
