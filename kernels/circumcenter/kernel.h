@@ -40,7 +40,7 @@ struct kernel_buffer {
 
 typedef struct kernel_buffer kernel_buffer_t;
 
-void baseline(kernel_data_t *restrict data) {
+static inline void baseline(kernel_data_t *restrict data) {
   float Ax, Ay, Bx, By, Cx, Cy;
   float Ax2_Ay2, Bx2_Bx2, Cx2_Cx2, D;
 

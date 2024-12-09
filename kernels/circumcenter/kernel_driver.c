@@ -10,9 +10,9 @@
 
 #define ALIGNMENT 64
 
-#define RUNS 10000
+#define RUNS 100000
 
-#define KERNEL_ITERS 1
+#define KERNEL_ITERS 4
 
 // kernel0 + kernel1
 // SIMD_SIZE * NUM_OPS * NUM ITER
@@ -78,12 +78,13 @@ int main(void) {
       kernel1(&(data[j]), buffer);
       // baseline(&(data[j]));
       t1 = rdtsc();
-      sum += (t1 - t0);
     }
+    sum += (t1 - t0);
   }
 
-  printf(" %lf\n", (OPS) / ((double)(sum / (KERNEL_ITERS * RUNS)) *
-                            (MAX_FREQ / BASE_FREQ)));
+  printf("%d\n", OPS * KERNEL_ITERS);
+  printf(" %lf\n", (OPS * KERNEL_ITERS) /
+                       ((double)(sum / RUNS) * (MAX_FREQ / BASE_FREQ)));
 
   printf("First kernel: %f %f\n", data[0].data[0].Ux[0], data[0].data[0].Uy[0]);
   // printf("Second kernel: %f %f\n", data[1].data[0].Ux[0],
