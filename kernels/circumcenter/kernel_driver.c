@@ -12,11 +12,17 @@
 
 #define RUNS 100000
 
-#define KERNEL_ITERS 4
+#define KERNEL_ITERS_PER_THREAD 1
+
+#define NUM_THREADS 8
+
+#define KERNEL_ITERS (KERNEL_ITERS_PER_THREAD * NUM_THREADS)
 
 // kernel0 + kernel1
-// SIMD_SIZE * NUM_OPS * NUM ITER
-#define OPS ((SIMD_SIZE * 30 * 6) + (SIMD_SIZE * 18 * 6))
+// SIMD_SIZE * NUM_OPS * NUM_SIMD_IN_KERNEL
+#define OPS ((SIMD_SIZE * 30 * 6) + (SIMD_SIZE * 4 * 6))
+// kernel0 + kernel1_reciprocal
+// #define OPS ((2 * SIMD_SIZE * 30 * 6) + (SIMD_SIZE * 4 * 12))
 
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
@@ -39,18 +45,18 @@ int main(void) {
   for (int i = 0; i < KERNEL_ITERS; i++) {
     for (int j = 0; j < NUM_SIMD_IN_KERNEL; j++) {
       for (int k = 0; k < SIMD_SIZE; k++) {
-        // in_data[i].data[j].Ax[k] = 0.0;
-        // in_data[i].data[j].Ay[k] = 0.0;
-        // in_data[i].data[j].Bx[k] = 1.0;
-        // in_data[i].data[j].By[k] = 0.0;
-        // in_data[i].data[j].Cx[k] = 0.5;
-        // in_data[i].data[j].Cy[k] = 1.0;
-        data[i].data[j].Ax[k] = rand();
-        data[i].data[j].Ay[k] = rand();
-        data[i].data[j].Bx[k] = rand();
-        data[i].data[j].By[k] = rand();
-        data[i].data[j].Cx[k] = rand();
-        data[i].data[j].Cy[k] = rand();
+        data[i].data[j].Ax[k] = 0.0;
+        data[i].data[j].Ay[k] = 0.0;
+        data[i].data[j].Bx[k] = 1.0;
+        data[i].data[j].By[k] = 0.0;
+        data[i].data[j].Cx[k] = 0.5;
+        data[i].data[j].Cy[k] = 1.0;
+        // data[i].data[j].Ax[k] = rand();
+        // data[i].data[j].Ay[k] = rand();
+        // data[i].data[j].Bx[k] = rand();
+        // data[i].data[j].By[k] = rand();
+        // data[i].data[j].Cx[k] = rand();
+        // data[i].data[j].Cy[k] = rand();
         data[i].data[j].Ux[k] = 0.0;
         data[i].data[j].Uy[k] = 0.0;
       }
@@ -72,19 +78,30 @@ int main(void) {
 
   // Test kernels
   for (int i = 0; i < RUNS; i++) {
+    // for (int j = 0; j < KERNEL_ITERS; j = j + 2) {
+    //   t0 = rdtsc();
+    //   kernel0(&(data[j]), buffer);
+    //   kernel0(&(data[j + 1]), &buffer[NUM_SIMD_IN_KERNEL]);
+    //   kernel1_reciprocal(&(data[j]), buffer);
+    //   // baseline(&(data[j]));
+    //   t1 = rdtsc();
+    //   sum += (t1 - t0);
+    // }
     for (int j = 0; j < KERNEL_ITERS; j++) {
       t0 = rdtsc();
       kernel0(&(data[j]), buffer);
       kernel1(&(data[j]), buffer);
       // baseline(&(data[j]));
       t1 = rdtsc();
+      sum += (t1 - t0);
     }
-    sum += (t1 - t0);
   }
 
-  printf("%d\n", OPS * KERNEL_ITERS);
+  // printf("%d\n", OPS * KERNEL_ITERS);
   printf(" %lf\n", (OPS * KERNEL_ITERS) /
                        ((double)(sum / RUNS) * (MAX_FREQ / BASE_FREQ)));
+  // printf(" %lf\n", (OPS * (KERNEL_ITERS / 2)) /
+  //                      ((double)(sum / RUNS) * (MAX_FREQ / BASE_FREQ)));
 
   printf("First kernel: %f %f\n", data[0].data[0].Ux[0], data[0].data[0].Uy[0]);
   // printf("Second kernel: %f %f\n", data[1].data[0].Ux[0],

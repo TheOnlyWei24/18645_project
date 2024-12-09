@@ -1,6 +1,17 @@
 """ PROGRAM FOR TESTING VORNOI CORRECTNESS """
 import numpy as np
 import matplotlib.pyplot as plt
+import ctypes
+
+_kernel = ctypes.CDLL('kernel.so')
+
+# void kernel0(kernel_data_t *restrict data, kernel_buffer_t *restrict buffer)
+_kernel.kernel0.argtypes = (np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='C_CONTIGUOUS'), 
+                            np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='C_CONTIGUOUS'))
+
+# void kernel1(kernel_data_t *restrict data, kernel_buffer_t *restrict buffer)
+_kernel.kernel1.argtypes = (np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='C_CONTIGUOUS'), 
+                            np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='C_CONTIGUOUS'))
 
 NUM_POINTS = 100
 MAX_VAL = 10000
@@ -62,29 +73,18 @@ class Triangle:
                 self.e1 == other.e0 or self.e1 == other.e1 or self.e1 == other.e2 or
                 self.e2 == other.e0 or self.e2 == other.e1 or self.e2 == other.e2)
 
+    #FIXME: Call kernels here
     def calculateCircumcenter(self):
         D = 2 * ((self.v0.x * (self.v1.y - self.v2.y)) +
                  (self.v1.x * (self.v2.y - self.v0.y)) +
                  (self.v2.x * (self.v0.y - self.v1.y)))
-
         assert D != 0.0, "Points are colinear"
-
         Ux = (((self.v0.x**2 + self.v0.y**2) * (self.v1.y - self.v2.y)) + 
               ((self.v1.x**2 + self.v1.y**2) * (self.v2.y - self.v0.y)) +
               ((self.v2.x**2 + self.v2.y**2) * (self.v0.y - self.v1.y))) / D
-        
         Uy = (((self.v0.x**2 + self.v0.y**2) * (self.v2.x - self.v1.x)) +
               ((self.v1.x**2 + self.v1.y**2) * (self.v0.x - self.v2.x)) +
               ((self.v2.x**2 + self.v2.y**2) * (self.v1.x - self.v0.x))) / D
-
-        # print(self.v0.x, self.v0.y, self.v1.x, self.v1.y, self.v2.x, self.v2.y, Ux, Uy, D,
-        #       (((self.v0.x**2 + self.v0.y**2) * (self.v1.y - self.v2.y)) + 
-        #       ((self.v1.x**2 + self.v1.y**2) * (self.v2.y - self.v0.y)) +
-        #       ((self.v2.x**2 + self.v2.y**2) * (self.v0.y - self.v1.y))),
-        #       (((self.v0.x**2 + self.v0.y**2) * (self.v2.x - self.v1.x)) +
-        #       ((self.v1.x**2 + self.v1.y**2) * (self.v0.x - self.v2.x)) +
-        #       ((self.v2.x**2 + self.v2.y**2) * (self.v1.x - self.v0.x))))
-
         self.circumcenter = Vertex(Ux, Uy)
 
 
@@ -241,14 +241,14 @@ if __name__ == '__main__':
 
     triangles = bowyerWatson(points_list)
 
-    fig = plt.figure()
-    ax = fig.add_subplot()
+    # fig = plt.figure()
+    # ax = fig.add_subplot()
 
-    print_delaunay(triangles, ax)
+    # print_delaunay(triangles, ax)
 
     vornoi(triangles)
 
-    print_vornoi(triangles, ax)
+    # print_vornoi(triangles, ax)
 
-    plt.show()
+    # plt.show()
 

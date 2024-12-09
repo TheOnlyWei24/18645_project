@@ -470,4 +470,149 @@ static inline void kernel1(kernel_data_t *restrict data,
   _mm256_store_ps(data->data[5].Uy, reg2);
 }
 
+static inline void kernel1_reciprocal(kernel_data_t *restrict data,
+                                      kernel_buffer_t *restrict buffer) {
+  float one[] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+  __m256 reg0 = _mm256_load_ps(&one[0]);
+  float two[] = {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0};
+  __m256 reg1 = _mm256_load_ps(&two[0]);
+
+  // D = partD * 2
+  __m256 reg2 = _mm256_load_ps(buffer->buffer[0].partD);
+  reg2 = _mm256_mul_ps(reg2, reg1);
+  __m256 reg3 = _mm256_load_ps(buffer->buffer[1].partD);
+  reg3 = _mm256_mul_ps(reg3, reg1);
+  __m256 reg4 = _mm256_load_ps(buffer->buffer[2].partD);
+  reg4 = _mm256_mul_ps(reg4, reg1);
+  __m256 reg5 = _mm256_load_ps(buffer->buffer[3].partD);
+  reg5 = _mm256_mul_ps(reg5, reg1);
+  __m256 reg6 = _mm256_load_ps(buffer->buffer[4].partD);
+  reg6 = _mm256_mul_ps(reg6, reg1);
+  __m256 reg7 = _mm256_load_ps(buffer->buffer[5].partD);
+  reg7 = _mm256_mul_ps(reg7, reg1);
+  __m256 reg8 = _mm256_load_ps(buffer->buffer[6].partD);
+  reg8 = _mm256_mul_ps(reg8, reg1);
+  __m256 reg9 = _mm256_load_ps(buffer->buffer[7].partD);
+  reg9 = _mm256_mul_ps(reg9, reg1);
+  __m256 reg10 = _mm256_load_ps(buffer->buffer[8].partD);
+  reg10 = _mm256_mul_ps(reg10, reg1);
+  __m256 reg11 = _mm256_load_ps(buffer->buffer[9].partD);
+  reg11 = _mm256_mul_ps(reg11, reg1);
+  __m256 reg12 = _mm256_load_ps(buffer->buffer[10].partD);
+  reg12 = _mm256_mul_ps(reg12, reg1);
+  __m256 reg13 = _mm256_load_ps(buffer->buffer[11].partD);
+  reg13 = _mm256_mul_ps(reg13, reg1);
+  __m256 reg14 = _mm256_load_ps(buffer->buffer[12].partD);
+  reg14 = _mm256_mul_ps(reg14, reg1);
+
+  // 1 / D
+  reg2 = _mm256_div_ps(reg0, reg2);
+  reg3 = _mm256_div_ps(reg0, reg3);
+  reg4 = _mm256_div_ps(reg0, reg4);
+  reg5 = _mm256_div_ps(reg0, reg5);
+  reg6 = _mm256_div_ps(reg0, reg6);
+  reg7 = _mm256_div_ps(reg0, reg7);
+  reg8 = _mm256_div_ps(reg0, reg8);
+  reg9 = _mm256_div_ps(reg0, reg9);
+  reg10 = _mm256_div_ps(reg0, reg10);
+  reg11 = _mm256_div_ps(reg0, reg11);
+  reg12 = _mm256_div_ps(reg0, reg12);
+  reg13 = _mm256_div_ps(reg0, reg13);
+  reg14 = _mm256_div_ps(reg0, reg14);
+
+  __m256 reg15 = _mm256_load_ps(buffer->buffer[0].partUx);
+  reg0 = _mm256_load_ps(buffer->buffer[0].partUy);
+  reg15 = _mm256_mul_ps(reg15, reg2); // Ux = partUx * (1 / D)
+  reg0 = _mm256_mul_ps(reg0, reg2);   // Uy = partUy * (1 / D)
+  // Have to start executing store here otherwise run out of regs
+  _mm256_store_ps(data->data[0].Ux, reg15);
+  _mm256_store_ps(data->data[0].Uy, reg0);
+
+  reg1 = _mm256_load_ps(buffer->buffer[1].partUx);
+  reg2 = _mm256_load_ps(buffer->buffer[1].partUy);
+  reg1 = _mm256_mul_ps(reg1, reg3);
+  reg2 = _mm256_mul_ps(reg2, reg3);
+  _mm256_store_ps(data->data[1].Ux, reg1);
+  _mm256_store_ps(data->data[1].Uy, reg2);
+
+  reg15 = _mm256_load_ps(buffer->buffer[2].partUx);
+  reg0 = _mm256_load_ps(buffer->buffer[2].partUy);
+  reg15 = _mm256_mul_ps(reg15, reg4);
+  reg0 = _mm256_mul_ps(reg0, reg4);
+  _mm256_store_ps(data->data[2].Ux, reg15);
+  _mm256_store_ps(data->data[2].Uy, reg0);
+
+  reg1 = _mm256_load_ps(buffer->buffer[3].partUx);
+  reg2 = _mm256_load_ps(buffer->buffer[3].partUy);
+  reg1 = _mm256_mul_ps(reg1, reg5);
+  reg2 = _mm256_mul_ps(reg2, reg5);
+  _mm256_store_ps(data->data[3].Ux, reg1);
+  _mm256_store_ps(data->data[3].Uy, reg2);
+
+  reg3 = _mm256_load_ps(buffer->buffer[4].partUx);
+  reg4 = _mm256_load_ps(buffer->buffer[4].partUy);
+  reg3 = _mm256_mul_ps(reg3, reg6);
+  reg4 = _mm256_mul_ps(reg4, reg6);
+  _mm256_store_ps(data->data[4].Ux, reg3);
+  _mm256_store_ps(data->data[4].Uy, reg4);
+
+  reg5 = _mm256_load_ps(buffer->buffer[5].partUx);
+  reg6 = _mm256_load_ps(buffer->buffer[5].partUy);
+  reg5 = _mm256_mul_ps(reg5, reg7);
+  reg6 = _mm256_mul_ps(reg6, reg7);
+  _mm256_store_ps(data->data[5].Ux, reg5);
+  _mm256_store_ps(data->data[5].Uy, reg6);
+
+  reg15 = _mm256_load_ps(buffer->buffer[6].partUx);
+  reg0 = _mm256_load_ps(buffer->buffer[6].partUy);
+  reg15 = _mm256_mul_ps(reg15, reg8);
+  reg0 = _mm256_mul_ps(reg0, reg8);
+  // Finally have enough regs to sustain the computation
+
+  reg7 = _mm256_load_ps(buffer->buffer[7].partUx);
+  reg8 = _mm256_load_ps(buffer->buffer[7].partUy);
+  reg7 = _mm256_mul_ps(reg7, reg9);
+  reg8 = _mm256_mul_ps(reg8, reg9);
+
+  reg1 = _mm256_load_ps(buffer->buffer[8].partUx);
+  reg2 = _mm256_load_ps(buffer->buffer[8].partUy);
+  reg1 = _mm256_mul_ps(reg1, reg10);
+  reg2 = _mm256_mul_ps(reg2, reg10);
+
+  reg9 = _mm256_load_ps(buffer->buffer[9].partUx);
+  reg10 = _mm256_load_ps(buffer->buffer[9].partUy);
+  reg9 = _mm256_mul_ps(reg9, reg11);
+  reg10 = _mm256_mul_ps(reg10, reg11);
+
+  reg3 = _mm256_load_ps(buffer->buffer[10].partUx);
+  reg4 = _mm256_load_ps(buffer->buffer[10].partUy);
+  reg3 = _mm256_mul_ps(reg3, reg12);
+  reg4 = _mm256_mul_ps(reg4, reg12);
+
+  reg11 = _mm256_load_ps(buffer->buffer[11].partUx);
+  reg12 = _mm256_load_ps(buffer->buffer[11].partUy);
+  reg11 = _mm256_mul_ps(reg11, reg13);
+  reg12 = _mm256_mul_ps(reg12, reg13);
+
+  reg5 = _mm256_load_ps(buffer->buffer[12].partUx);
+  reg6 = _mm256_load_ps(buffer->buffer[12].partUy);
+  reg5 = _mm256_mul_ps(reg5, reg14);
+  reg6 = _mm256_mul_ps(reg6, reg14);
+
+  _mm256_store_ps(data->data[6].Ux, reg15);
+  _mm256_store_ps(data->data[6].Uy, reg0);
+  _mm256_store_ps(data->data[7].Ux, reg7);
+  _mm256_store_ps(data->data[7].Uy, reg8);
+  _mm256_store_ps(data->data[8].Ux, reg1);
+  _mm256_store_ps(data->data[8].Uy, reg2);
+  _mm256_store_ps(data->data[9].Ux, reg9);
+  _mm256_store_ps(data->data[9].Uy, reg10);
+  _mm256_store_ps(data->data[10].Ux, reg3);
+  _mm256_store_ps(data->data[10].Uy, reg4);
+  _mm256_store_ps(data->data[11].Ux, reg11);
+  _mm256_store_ps(data->data[11].Uy, reg12);
+  _mm256_store_ps(data->data[12].Ux, reg5);
+  _mm256_store_ps(data->data[12].Uy, reg6);
+}
+
 #endif
