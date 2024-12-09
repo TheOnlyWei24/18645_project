@@ -1,29 +1,21 @@
-#ifndef KERNEL_H
-#define KERNEL_H
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <immintrin.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 static const int SIMD_SIZE = 8;
-static const int NUM_ELEMS = 2;
 static const int KERNEL_SIZE = 2*SIMD_SIZE;
 
 static inline void kernel_sub
 (
-  float*      Ax,
-  float*      Ay,
-  float*      Bx,
-  float*      By,
-  float*      Cx,
-  float*      Cy,
-  float*      Dx,
-  float*      Dy,
+  float*     Ax,
+  float*     Ay,
+  float*     Bx,
+  float*     By,
+  float*     Cx,
+  float*     Cy,
+  float*     Dx,
+  float*     Dy,
   __m256*      a,
   __m256*      b,
   __m256*      d,
@@ -272,32 +264,31 @@ static inline void kernel_det2
 
 void kernel
 (
-  float*      Ax,
-  float*      Ay,
-  float*      Bx,
-  float*      By,
-  float*      Cx,
-  float*      Cy,
-  float*      Dx,
-  float*      Dy,
-  float*      det3_out
+  float*     Ax,
+  float*     Ay,
+  float*     Bx,
+  float*     By,
+  float*     Cx,
+  float*     Cy,
+  float*     Dx,
+  float*     Dy,
+  float*     det3_out,
+  int num_elems
 ){
   
   __m256 a[2], b[2], c[2], d[2], e[2], f[2], g[2], h[2], i[2], det2_out1[2], det2_out2[2], det2_out3[2];
   __m256 reg0, reg1, reg2, reg3, reg4, reg5;
   int idx = 0;
 
-  for (int p = 0; p < (int)((NUM_ELEMS*SIMD_SIZE)/KERNEL_SIZE); p++){
-    idx = KERNEL_SIZE*p;
-    
-    // part 1
-    kernel_sub(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], &Dx[idx], &Dy[idx], \
-              a, b, d, e, g, h);
+  for (int idx = 0; idx < num_elems; idx += SIMD_SIZE * 2) {
+    // Part 1
+    kernel_sub(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx],
+               &Cx[idx], &Cy[idx], &Dx[idx], &Dy[idx],
+               a, b, d, e, g, h);
     kernel_square_add(a, b, c, d, e, f, g, h, i);
-    kernel_det2(a, b, c, d, e, f, g, h, i, \
-               det2_out1, det2_out2, det2_out3);
+    kernel_det2(a, b, c, d, e, f, g, h, i, det2_out1, det2_out2, det2_out3);
 
-    // part 2
+    // Part 2: Combine results
     reg0 = det2_out1[0];
     reg1 = det2_out1[1];
     reg2 = det2_out2[0];
@@ -309,16 +300,12 @@ void kernel
     reg1 = _mm256_add_ps(reg1, reg3);
     reg0 = _mm256_add_ps(reg0, reg4);
     reg1 = _mm256_add_ps(reg1, reg5);
-    // CMP
 
-    // Store det3_out
-    _mm256_store_ps(&det3_out[idx], reg0);
-    _mm256_store_ps(&det3_out[idx+SIMD_SIZE], reg1);
+    if (idx < num_elems) {
+        _mm256_store_ps(&det3_out[idx], reg0);
+    }
+    if (idx + SIMD_SIZE < num_elems) {
+        _mm256_store_ps(&det3_out[idx + SIMD_SIZE], reg1);
+    }
   }
 }
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif // KERNEL_H

@@ -4,11 +4,16 @@
 #include <cmath>
 #include <limits>
 #include <algorithm>
+#include <cassert>
 #include <immintrin.h> 
 #include "kernels/det3/kernel.h"
 
-#define NUM_POINTS 16 // NOTE: NEEDS TO MULTIPLE OF KERNEL_SIZE AS OF RN and MUST BE == TO vertices.size()
-#define NUM_TRIANGLES 256 // NOTE: NEEDS TO MULTIPLE OF KERNEL_SIZE AS OF RN
+#define NUM_TRIANGLES 2048 // NOTE: NEEDS TO MULTIPLE OF KERNEL_SIZE AS OF RN
+#define NUM_ELEMS 256
+#define ALIGNMENT 32
+#define SIMD_SIZE 8
+
+#define NUM_SIMD_IN_KERNEL (NUM_TRIANGLES / SIMD_SIZE)
 
 // Vertex class 
 struct Vertex {
@@ -136,72 +141,106 @@ Triangle createSuperTriangle(const std::vector<Vertex>& vertices) {
     return Triangle(v0, v1, v2);
 }
 
+// PackedPoints struct for SIMD
 struct PackedPoints {
-    float Ax[NUM_TRIANGLES];
-    float Ay[NUM_TRIANGLES];
-    float Bx[NUM_TRIANGLES];
-    float By[NUM_TRIANGLES];
-    float Cx[NUM_TRIANGLES];
-    float Cy[NUM_TRIANGLES];
-    float Dx[NUM_POINTS];
-    float Dy[NUM_POINTS];
+    float Ax[NUM_ELEMS];
+    float Ay[NUM_ELEMS];
+    float Bx[NUM_ELEMS];
+    float By[NUM_ELEMS];
+    float Cx[NUM_ELEMS];
+    float Cy[NUM_ELEMS];
+    float Dx[NUM_ELEMS];
+    float Dy[NUM_ELEMS];
 };
 
-// Function to pack all triangles and one vertex
-void packTrianglesAndVertex(const std::vector<Triangle>& triangles, const Vertex& vertex, PackedPoints& packedData) {
-    for (size_t i = 0; i < triangles.size(); ++i) {
-        packedData.Ax[i] = triangles[i].v0.x;
-        packedData.Ay[i] = triangles[i].v0.y;
-        packedData.Bx[i] = triangles[i].v1.x;
-        packedData.By[i] = triangles[i].v1.y;
-        packedData.Cx[i] = triangles[i].v2.x;
-        packedData.Cy[i] = triangles[i].v2.y;
-    }
+// Function to pack triangles and one vertex for SIMD
+void packTrianglesAndVertex(const std::vector<Triangle>& triangles, const Vertex& vertex, PackedPoints* packedData) {
+    size_t numTriangles = triangles.size();
+    size_t numSimdGroups = (numTriangles + SIMD_SIZE - 1) / SIMD_SIZE; // Correct rounding
 
-    for (size_t i = 0; i < NUM_POINTS; ++i) {
-        packedData.Dx[i] = vertex.x;
-        packedData.Dy[i] = vertex.y;
+    for (size_t group = 0; group < numSimdGroups; ++group) {
+        for (size_t j = 0; j < SIMD_SIZE; ++j) {
+            size_t index = group * SIMD_SIZE + j;
+            if (index < triangles.size()) {
+                packedData->Ax[j] = triangles[index].v0.x;
+                packedData->Ay[j] = triangles[index].v0.y;
+                packedData->Bx[j] = triangles[index].v1.x;
+                packedData->By[j] = triangles[index].v1.y;
+                packedData->Cx[j] = triangles[index].v2.x;
+                packedData->Cy[j] = triangles[index].v2.y;
+                packedData->Dx[j] = vertex.x;
+                packedData->Dy[j] = vertex.y;
+            } else {
+                packedData->Ax[j] = 0.0f;
+                packedData->Ay[j] = 0.0f;
+                packedData->Bx[j] = 0.0f;
+                packedData->By[j] = 0.0f;
+                packedData->Cx[j] = 0.0f;
+                packedData->Cy[j] = 0.0f;
+                packedData->Dx[j] = 0.0f;
+                packedData->Dy[j] = 0.0f;
+            }
+        }
     }
 }
 
-
 // Main loop for Delaunay triangulation
-std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices) {
+std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices, PackedPoints* packedData, float* det3_out) {
     std::vector<Triangle> triangles;
     Triangle superTriangle = createSuperTriangle(vertices);
     triangles.push_back(superTriangle);
-
-    PackedPoints packedData;
 
     for (const auto& vertex : vertices) {
         std::vector<Edge> edges;
         packTrianglesAndVertex(triangles, vertex, packedData);
 
-        float det3_out[NUM_POINTS];
-        kernel(packedData.Ax, packedData.Ay, packedData.Bx, packedData.By,
-               packedData.Cx, packedData.Cy, packedData.Dx, packedData.Dy, det3_out);
+        size_t numTriangles = triangles.size();
+        size_t numSimdGroups = (numTriangles + SIMD_SIZE - 1) / SIMD_SIZE; // Round up to nearest 16
 
-        int i = 0;
+        // Initialize the allocated memory
+        memset(det3_out, 0, sizeof(float) * NUM_ELEMS);
+
+        kernel(packedData->Ax, packedData->Ay,
+                packedData->Bx, packedData->By,
+                packedData->Cx, packedData->Cy,
+                packedData->Dx, packedData->Dy,
+                det3_out, numSimdGroups * SIMD_SIZE
+        );
+        
+        for (size_t i = 0; i < numSimdGroups; i++) {
+            for (size_t j = 0; j < SIMD_SIZE; j++) {
+                size_t index = i * SIMD_SIZE + j;
+                // std::cerr << "det3_out[" << i << "][" << j << "]: " << det3_out[index] << std::endl;
+            }
+        }
+
+        std::cerr << "numSimdGroups: " << numSimdGroups << ", numTriangles: " << numTriangles << "\n" << std::endl;
+
         for (auto it = triangles.begin(); it != triangles.end();) {
-            if (det3_out[i] > 0) {
+            // Use indices or references instead of pointers
+            size_t index = std::distance(triangles.begin(), it);
+
+            size_t group = index / SIMD_SIZE;
+            size_t offset = index % SIMD_SIZE;
+
+            // Avoid using invalidated pointers after reallocation
+            if (group < numSimdGroups && det3_out[group * SIMD_SIZE + offset] > 0) {
                 edges.push_back(Edge(it->v0, it->v1));
                 edges.push_back(Edge(it->v1, it->v2));
                 edges.push_back(Edge(it->v2, it->v0));
-                it = triangles.erase(it);
+                it = triangles.erase(it); // Safe as no other iterator depends on `it`
             } else {
                 ++it;
             }
-            ++i;
         }
 
-        edges = getBoundaryEdges(edges);
 
+        edges = getBoundaryEdges(edges);
         for (const auto& edge : edges) {
             triangles.emplace_back(edge.v0, edge.v1, vertex);
         }
     }
-
-    // Remove triangles that share vertices with the super-triangle
+    
     triangles.erase(std::remove_if(triangles.begin(), triangles.end(),
                                    [&superTriangle](const Triangle& triangle) {
                                        return (triangle.v0 == superTriangle.v0 ||
@@ -215,7 +254,6 @@ std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices) {
                                                triangle.v2 == superTriangle.v2);
                                    }),
                     triangles.end());
-
     return triangles;
 }
 
@@ -228,14 +266,33 @@ int main() {
         Vertex(5, 1), Vertex(6, 0), Vertex(7, 3), Vertex(8, 5)
     };
 
+    PackedPoints* packedData = nullptr;
+    if (posix_memalign((void**)&packedData, ALIGNMENT, sizeof(PackedPoints)) != 0) {
+        std::cerr << "Memory allocation failed for packedData" << std::endl;
+        return -1;
+    }
+    if (!packedData) {
+        std::cerr << "packedData is null after allocation" << std::endl;
+        return -1;
+    }
+    memset(packedData, 0, sizeof(PackedPoints));
 
-    std::vector<Triangle> triangulation = bowyerWatson(vertices);
+    float* det3_out;
+    if (posix_memalign((void**)&det3_out, ALIGNMENT, sizeof(float) * NUM_ELEMS) != 0) {
+        std::cerr << "Memory allocation failed for det3_out" << std::endl;
+        return -1;
+    }
+
+    std::vector<Triangle> triangulation = bowyerWatson(vertices, packedData, det3_out);
 
     for (const auto& triangle : triangulation) {
         std::cout << "Triangle: (" << triangle.v0.x << ", " << triangle.v0.y << ") -> ("
                   << triangle.v1.x << ", " << triangle.v1.y << ") -> ("
                   << triangle.v2.x << ", " << triangle.v2.y << "),\t" << "area (non-linearity check): " << triangle.area() << "\n";
     }
+
+    // Free the allocated memory
+    free(packedData);
 
     return 0;
 }
