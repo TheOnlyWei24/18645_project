@@ -100,14 +100,9 @@ struct Triangle {
 
 struct EdgeHash {
     std::size_t operator()(const Edge& edge) const {
-        auto hashVertex = [](const Vertex& v) {
-            return std::hash<float>()(v.x) ^ std::hash<float>()(v.y);
-        };
-
-        std::size_t hash1 = hashVertex(edge.v0);
-        std::size_t hash2 = hashVertex(edge.v1);
-
-        return hash1 < hash2 ? hash1 ^ hash2 : hash2 ^ hash1;
+        std::size_t h1 = std::hash<float>()(edge.v0.x) ^ std::hash<float>()(edge.v0.y);
+        std::size_t h2 = std::hash<float>()(edge.v1.x) ^ std::hash<float>()(edge.v1.y);
+        return h1 ^ h2;
     }
 };
 
