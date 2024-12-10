@@ -2,17 +2,18 @@
 #define __DET3_KERNEL1_H_
 
 #include <immintrin.h>
+#define SIMD_SIZE 8
 
 static inline void kernel_sub
 (
-  float*     restrict Ax,
-  float*     restrict Ay,
-  float*     restrict Bx,
-  float*     restrict By,
-  float*     restrict Cx,
-  float*     restrict Cy,
-  float*     restrict Dx,
-  float*     restrict Dy,
+  float*      Ax,
+  float*      Ay,
+  float*      Bx,
+  float*      By,
+  float*      Cx,
+  float*      Cy,
+  float               Dx,
+  float               Dy,
   __m256*      a,
   __m256*      b,
   __m256*      d,
@@ -30,17 +31,17 @@ static inline void kernel_sub
   reg3 = _mm256_load_ps(&By[0]);
   reg4 = _mm256_load_ps(&Cx[0]);
   reg5 = _mm256_load_ps(&Cy[0]);
-  reg6 = _mm256_load_ps(&Dx[0]);
-  reg7 = _mm256_load_ps(&Dy[0]);
-
+  reg6 = _mm256_set1_ps(Dx);
+  reg7 = _mm256_set1_ps(Dy);
+  
   reg8  = _mm256_load_ps(&Ax[SIMD_SIZE]);
   reg9  = _mm256_load_ps(&Ay[SIMD_SIZE]);
   reg10 = _mm256_load_ps(&Bx[SIMD_SIZE]);
   reg11 = _mm256_load_ps(&By[SIMD_SIZE]);
   reg12 = _mm256_load_ps(&Cx[SIMD_SIZE]);
   reg13 = _mm256_load_ps(&Cy[SIMD_SIZE]);
-  reg14 = _mm256_load_ps(&Dx[SIMD_SIZE]);
-  reg15 = _mm256_load_ps(&Dy[SIMD_SIZE]);
+  reg14 = reg6;
+  reg15 = reg7;
 
   __asm__ volatile("" ::: "memory");
   // Ax - Dx
@@ -266,15 +267,15 @@ static inline void kernel_det2
 
 void kernel
 (
-  float*     restrict Ax,
-  float*     restrict Ay,
-  float*     restrict Bx,
-  float*     restrict By,
-  float*     restrict Cx,
-  float*     restrict Cy,
-  float*     restrict Dx,
-  float*     restrict Dy,
-  float*     restrict det3_out
+  float*      Ax,
+  float*      Ay,
+  float*      Bx,
+  float*      By,
+  float*      Cx,
+  float*      Cy,
+  float               Dx,
+  float               Dy,
+  float*      det3_out
 ){
   
   __m256 a[2], b[2], c[2], d[2], e[2], f[2], g[2], h[2], i[2], det2_out1[2], det2_out2[2], det2_out3[2];
@@ -332,6 +333,7 @@ void kernel
   // Store det3_out
   _mm256_store_ps(&det3_out[0], reg0);
   _mm256_store_ps(&det3_out[0+SIMD_SIZE], reg1);
+
 }
 
 #endif

@@ -8,9 +8,6 @@
 #include "kernel1.h"
 #include "kernel2.h"
 
-// kernel0 + kernel1
-// SIMD_SIZE * NUM_OPS * NUM ITER
-// #define OPS ((SIMD_SIZE * 30 * 6) + (SIMD_SIZE * 18 * 6))
 
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
@@ -64,7 +61,7 @@ int main(){
 
   for (int t=0; t<10; t++){
     //int NUM_ELEMS = data_dim[t];
-    int NUM_ELEMS = 65536;
+    int NUM_ELEMS = 32768;
     NUM_THREADS = threads[t];
     //create memory aligned buffers
     posix_memalign((void**) &Ax, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));

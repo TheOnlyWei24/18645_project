@@ -16,6 +16,8 @@ using namespace std::chrono;
 #define NUM_ELEMS 100000
 #define ALIGNMENT 32
 #define SIMD_SIZE 8
+#define NUM_ELEMS_IN_KERNEL 4
+#define KERNEL_SIZE (NUM_ELEMS_IN_KERNEL*SIMD_SIZE) 
 
 // Vertex class 
 struct Vertex {
@@ -172,13 +174,18 @@ Triangle createSuperTriangle(const std::vector<Vertex>& vertices) {
 }
 
 // PackedPoints struct for SIMD
+struct Points {
+    float Ax[KERNEL_SIZE];
+    float Ay[KERNEL_SIZE];
+    float Bx[KERNEL_SIZE];
+    float By[KERNEL_SIZE];
+    float Cx[KERNEL_SIZE];
+    float Cy[KERNEL_SIZE];
+};
+typedef struct Points points_t
+
 struct PackedPoints {
-    float Ax[NUM_ELEMS];
-    float Ay[NUM_ELEMS];
-    float Bx[NUM_ELEMS];
-    float By[NUM_ELEMS];
-    float Cx[NUM_ELEMS];
-    float Cy[NUM_ELEMS];
+    points_t PackedPoints[]; // Prob length of kernel iter
 };
 
 // Function to pack triangles and one vertex for SIMD
@@ -187,15 +194,15 @@ void packTrianglesAndVertex(const std::vector<Triangle>& triangles, PackedPoints
     size_t numSimdGroups = (numTriangles + SIMD_SIZE - 1) / SIMD_SIZE; // Correct rounding
 
     for (size_t group = 0; group < numSimdGroups; ++group) {
-        for (size_t j = 0; j < SIMD_SIZE; ++j) {
-            size_t index = group * SIMD_SIZE + j;
+        for (size_t j = 0; j < KERNEL_SIZE; ++j) {
+            size_t index = group * KERNEL_SIZE + j;
             if (index < triangles.size()) {
-                packedData->Ax[j] = triangles[index].v0.x;
-                packedData->Ay[j] = triangles[index].v0.y;
-                packedData->Bx[j] = triangles[index].v1.x;
-                packedData->By[j] = triangles[index].v1.y;
-                packedData->Cx[j] = triangles[index].v2.x;
-                packedData->Cy[j] = triangles[index].v2.y;
+                packedData->PackedPoints[].Ax[j] = triangles[index].v0.x;
+                packedData->PackedPoints[].Ay[j] = triangles[index].v0.y;
+                packedData->PackedPoints[].Bx[j] = triangles[index].v1.x;
+                packedData->PackedPoints[].By[j] = triangles[index].v1.y;
+                packedData->PackedPoints[].Cx[j] = triangles[index].v2.x;
+                packedData->PackedPoints[].Cy[j] = triangles[index].v2.y;
             } else {
                 break;
             }

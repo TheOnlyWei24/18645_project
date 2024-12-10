@@ -7,11 +7,12 @@
 #include <unordered_set>
 #include <chrono>
 #include <algorithm>
-//#include "kernels/det3/kernel.h"
+#include "kernels/det3/kernel1.h"
+#include <omp.h>
 
 #define SUPER_TRIANGLE_MAX 10000000
 
-#define NUM_TRIANGLES 2048
+#define NUM_TRIANGLES 32768
 
 #define NUM_ELEMS 256
 
@@ -20,6 +21,8 @@
 #define SIMD_SIZE 8
 
 #define NUM_SIMD_IN_KERNEL (NUM_TRIANGLES / SIMD_SIZE)
+
+#define DET3_KERNEL_SIZE 2
 
 struct Vertex {
     float x, y;
@@ -60,7 +63,7 @@ struct Triangle {
         return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) > 0;
     }
 
-    bool inCircumcircle(const Vertex& v) const {
+    float inCircumcircle(const Vertex& v) const {
         float a = v0.x - v.x;
         float b = v0.y - v.y;
         float d = v1.x - v.x;
@@ -78,7 +81,7 @@ struct Triangle {
 
         float out = out0 + out1 + out2;
 
-        return out > 0;
+        return out;
     }
 
     void calculateCircumcenter() {
@@ -107,19 +110,6 @@ struct EdgeHash {
         return hash1 < hash2 ? hash1 ^ hash2 : hash2 ^ hash1;
     }
 };
-
-
-struct PackedPoints {
-    float Ax[NUM_ELEMS];
-    float Ay[NUM_ELEMS];
-    float Bx[NUM_ELEMS];
-    float By[NUM_ELEMS];
-    float Cx[NUM_ELEMS];
-    float Cy[NUM_ELEMS];
-    float Dx[NUM_ELEMS];
-    float Dy[NUM_ELEMS];
-};
-
 
 int readPointsFile(std::string& filename, std::vector<Vertex>& points) {
     std::ifstream file(filename);
@@ -153,32 +143,43 @@ Triangle superTriangle(void) {
     return Triangle(v0, v1, v2);
 }
 
+struct delaunay_points {
+    float Ax[DET3_KERNEL_SIZE*SIMD_SIZE];
+    float Ay[DET3_KERNEL_SIZE*SIMD_SIZE];
+    float Bx[DET3_KERNEL_SIZE*SIMD_SIZE];
+    float By[DET3_KERNEL_SIZE*SIMD_SIZE];
+    float Cx[DET3_KERNEL_SIZE*SIMD_SIZE];
+    float Cy[DET3_KERNEL_SIZE*SIMD_SIZE];
+};
+typedef struct delaunay_points delaunay_points_t;
 
-void packTrianglesAndVertex(const std::vector<Triangle>& triangles, const Vertex& vertex, PackedPoints* packedData) {
+struct packed_delaunay_points {
+    delaunay_points_t packedPoints[NUM_TRIANGLES/(DET3_KERNEL_SIZE*SIMD_SIZE)];
+};
+typedef struct packed_delaunay_points packed_delaunay_points_t;
+
+void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, packed_delaunay_points_t* packedData) {
     size_t numTriangles = triangles.size();
-    size_t numSimdGroups = (numTriangles + SIMD_SIZE - 1) / SIMD_SIZE; // Correct rounding
+    size_t numKernelIter = (numTriangles + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE); // Correct rounding
 
-    for (size_t group = 0; group < numSimdGroups; ++group) {
-        for (size_t j = 0; j < SIMD_SIZE; ++j) {
-            size_t index = group * SIMD_SIZE + j;
-            if (index < triangles.size()) {
-                packedData->Ax[j] = triangles[index].v0.x;
-                packedData->Ay[j] = triangles[index].v0.y;
-                packedData->Bx[j] = triangles[index].v1.x;
-                packedData->By[j] = triangles[index].v1.y;
-                packedData->Cx[j] = triangles[index].v2.x;
-                packedData->Cy[j] = triangles[index].v2.y;
-                packedData->Dx[j] = vertex.x;
-                packedData->Dy[j] = vertex.y;
-            } else {
-                packedData->Ax[j] = 0.0f;
-                packedData->Ay[j] = 0.0f;
-                packedData->Bx[j] = 0.0f;
-                packedData->By[j] = 0.0f;
-                packedData->Cx[j] = 0.0f;
-                packedData->Cy[j] = 0.0f;
-                packedData->Dx[j] = 0.0f;
-                packedData->Dy[j] = 0.0f;
+    for (size_t i = 0; i < numKernelIter; i++){
+        for (size_t j = 0; j < SIMD_SIZE*DET3_KERNEL_SIZE; j++){
+            size_t currentTriangle = i * (SIMD_SIZE*DET3_KERNEL_SIZE) + j;
+            if (currentTriangle < triangles.size()){
+                packedData->packedPoints[i].Ax[j] = triangles[currentTriangle].v0.x;
+                packedData->packedPoints[i].Ay[j] = triangles[currentTriangle].v0.y;
+                packedData->packedPoints[i].Bx[j] = triangles[currentTriangle].v1.x;
+                packedData->packedPoints[i].By[j] = triangles[currentTriangle].v1.y;
+                packedData->packedPoints[i].Cx[j] = triangles[currentTriangle].v2.x;
+                packedData->packedPoints[i].Cy[j] = triangles[currentTriangle].v2.y;
+            } 
+            else{
+                packedData->packedPoints[i].Ax[j] = 0.0f;
+                packedData->packedPoints[i].Ay[j] = 0.0f;
+                packedData->packedPoints[i].Bx[j] = 0.0f;
+                packedData->packedPoints[i].By[j] = 0.0f;
+                packedData->packedPoints[i].Cx[j] = 0.0f;
+                packedData->packedPoints[i].Cy[j] = 0.0f;
             }
         }
     }
@@ -192,9 +193,44 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
 
     //TODO: use unordered list for better perf, hashing isnt working??
 
+    // Pack delaunay data
+    packed_delaunay_points_t* packedData;
+    posix_memalign((void**) &packedData, ALIGNMENT, sizeof(packed_delaunay_points_t));
+    packDelaunay(triangles, vertex, packedData);
+
+    // Run kernel
+    int kernelIter = (triangles.size() + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE);
+    float *det3_out;
+    posix_memalign((void**) &det3_out, ALIGNMENT, kernelIter * DET3_KERNEL_SIZE * SIMD_SIZE * sizeof(float));
+    float x = vertex.x;
+    float y = vertex.y;
+    for (int i = 0; i < kernelIter; i++){
+        kernel( (packedData->packedPoints[i].Ax),
+                (packedData->packedPoints[i].Ay),
+                (packedData->packedPoints[i].Bx),
+                (packedData->packedPoints[i].By),
+                (packedData->packedPoints[i].Cx),
+                (packedData->packedPoints[i].Cy),
+                x, // Dx
+                y, // Dy
+                &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE*i]);
+    }
+
+    // int correct = 1;
+    // for (int j = 0; j < triangles.size(); j++){
+    //     int kernel_idx = j/16;
+    //     int idx = j%16;
+    //     float res = triangles[j].inCircumcircle(vertex);
+    //     correct &= (fabs(det3_out[j] - res) < 1e-13);
+    // }
+    // if (!correct){
+    //     printf("INCORRECT\n");
+    // }
+
     // Remove triangles with circumcircles containing the vertex
+    int t = 0;
     for (Triangle& triangle : triangles) {
-        if (triangle.inCircumcircle(vertex)) {
+        if (det3_out[t] > 0) {
             // unique_edges.insert(Edge(triangle.v0, triangle.v1));
             // unique_edges.insert(Edge(triangle.v1, triangle.v2));
             // unique_edges.insert(Edge(triangle.v2, triangle.v0)); 
@@ -204,6 +240,7 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
         } else {
           filtered_triangles.emplace_back(triangle);
         }
+        t++;
     }
 
     // Get unique edges
@@ -227,6 +264,8 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
         filtered_triangles.emplace_back(Triangle(edge.v0, edge.v1, vertex));
     }
     
+    free(det3_out);
+    free(packedData);
     return filtered_triangles;
 }
 
