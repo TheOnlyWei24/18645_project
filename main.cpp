@@ -198,11 +198,11 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
             // unique_edges.insert(Edge(triangle.v0, triangle.v1));
             // unique_edges.insert(Edge(triangle.v1, triangle.v2));
             // unique_edges.insert(Edge(triangle.v2, triangle.v0)); 
-            edges.push_back(Edge(triangle.v0, triangle.v1));
-            edges.push_back(Edge(triangle.v1, triangle.v2));
-            edges.push_back(Edge(triangle.v2, triangle.v0));
+            edges.emplace_back(Edge(triangle.v0, triangle.v1));
+            edges.emplace_back(Edge(triangle.v1, triangle.v2));
+            edges.emplace_back(Edge(triangle.v2, triangle.v0));
         } else {
-          filtered_triangles.push_back(triangle);
+          filtered_triangles.emplace_back(triangle);
         }
     }
 
@@ -218,13 +218,13 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
         }
 
         if (valid) {
-            unique_edges.push_back(edges[i]);
+            unique_edges.emplace_back(edges[i]);
         }
     }
 
     // Create new triangles from the unique edges and new vertex
     for (Edge edge : unique_edges) {
-        filtered_triangles.push_back(Triangle(edge.v0, edge.v1, vertex));
+        filtered_triangles.emplace_back(Triangle(edge.v0, edge.v1, vertex));
     }
     
     return filtered_triangles;
@@ -243,17 +243,19 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
     }
 
     // Remove triangles that share verticies with super triangle
-    // NOTE: tried removeif but it was slower
-    std::vector<Triangle> filtered_triangles;
-    for (Triangle& triangle : triangles) {
-        if (!(triangle.v0 == st.v0 || triangle.v0 == st.v1 || triangle.v0 == st.v2 ||
-              triangle.v1 == st.v0 || triangle.v1 == st.v1 || triangle.v1 == st.v2 ||
-              triangle.v2 == st.v0 || triangle.v2 == st.v1 || triangle.v2 == st.v2)) {
-            filtered_triangles.push_back(triangle);
-        }
-    }
+    triangles.erase(std::remove_if(triangles.begin(), triangles.end(),
+                                   [&st](const Triangle& triangle) {
+                                       return (triangle.v0 == st.v0 ||
+                                               triangle.v0 == st.v1 ||
+                                               triangle.v0 == st.v2 ||
+                                               triangle.v1 == st.v0 ||
+                                               triangle.v1 == st.v1 ||
+                                               triangle.v1 == st.v2 ||
+                                               triangle.v2 == st.v0 ||
+                                               triangle.v2 == st.v1 ||
+                                               triangle.v2 == st.v2);}), triangles.end());
 
-    return filtered_triangles;
+    return triangles;
 }
 
 
