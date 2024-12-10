@@ -5,8 +5,21 @@
 #include <vector>
 #include <cmath>
 #include <unordered_set>
+#include <chrono>
+#include <algorithm>
+//#include "kernels/det3/kernel.h"
 
 #define SUPER_TRIANGLE_MAX 10000000
+
+#define NUM_TRIANGLES 2048
+
+#define NUM_ELEMS 256
+
+#define ALIGNMENT 32
+
+#define SIMD_SIZE 8
+
+#define NUM_SIMD_IN_KERNEL (NUM_TRIANGLES / SIMD_SIZE)
 
 struct Vertex {
     float x, y;
@@ -33,6 +46,7 @@ struct Edge {
 
 struct Triangle {
     Vertex v0, v1, v2;
+    Vertex circumcenter;
 
     Triangle(const Vertex& v0_, const Vertex& v1_, const Vertex& v2_)
         : v0(v0_), v1(v1_), v2(v2_) {
@@ -66,25 +80,44 @@ struct Triangle {
 
         return out > 0;
     }
+
+    void calculateCircumcenter() {
+        float Ax2_Ay2 = (v0.x * v0.x) + (v0.y * v0.y);
+        float Bx2_Bx2 = (v1.x * v1.x) + (v1.y * v1.y);
+        float Cx2_Cx2 = (v2.x * v2.x) + (v2.y * v2.y);
+
+        float D = 2 * (((v1.y - v2.y) * v0.x) + ((v2.y - v0.y) * v1.x) + ((v0.y - v1.y) * v2.x));
+        float Ux = ((Ax2_Ay2 * (v1.y - v2.y)) + (Bx2_Bx2 * (v2.y - v0.y)) + (Cx2_Cx2 * (v0.y - v1.y))) / D;
+        float Uy = ((Ax2_Ay2 * (v2.x - v1.x)) + (Bx2_Bx2 * (v0.x - v2.x)) + (Cx2_Cx2 * (v1.x - v0.x))) / D;
+
+        circumcenter = Vertex(Ux, Uy);
+    }
 };
 
 
 struct EdgeHash {
     std::size_t operator()(const Edge& edge) const {
-        // Hash vertices in a consistent order (ignoring edge direction)
         auto hashVertex = [](const Vertex& v) {
             return std::hash<float>()(v.x) ^ std::hash<float>()(v.y);
         };
 
-        // Ensure the smaller vertex is always first for consistent hashing
-        const Vertex& v0 = edge.v0.x < edge.v1.x ? edge.v0 : edge.v1;
-        const Vertex& v1 = edge.v0.x < edge.v1.x ? edge.v1 : edge.v0;
+        std::size_t hash1 = hashVertex(edge.v0);
+        std::size_t hash2 = hashVertex(edge.v1);
 
-        std::size_t hash1 = hashVertex(v0);
-        std::size_t hash2 = hashVertex(v1);
-
-        return hash1 ^ hash2;
+        return hash1 < hash2 ? hash1 ^ hash2 : hash2 ^ hash1;
     }
+};
+
+
+struct PackedPoints {
+    float Ax[NUM_ELEMS];
+    float Ay[NUM_ELEMS];
+    float Bx[NUM_ELEMS];
+    float By[NUM_ELEMS];
+    float Cx[NUM_ELEMS];
+    float Cy[NUM_ELEMS];
+    float Dx[NUM_ELEMS];
+    float Dy[NUM_ELEMS];
 };
 
 
@@ -121,12 +154,43 @@ Triangle superTriangle(void) {
 }
 
 
+void packTrianglesAndVertex(const std::vector<Triangle>& triangles, const Vertex& vertex, PackedPoints* packedData) {
+    size_t numTriangles = triangles.size();
+    size_t numSimdGroups = (numTriangles + SIMD_SIZE - 1) / SIMD_SIZE; // Correct rounding
+
+    for (size_t group = 0; group < numSimdGroups; ++group) {
+        for (size_t j = 0; j < SIMD_SIZE; ++j) {
+            size_t index = group * SIMD_SIZE + j;
+            if (index < triangles.size()) {
+                packedData->Ax[j] = triangles[index].v0.x;
+                packedData->Ay[j] = triangles[index].v0.y;
+                packedData->Bx[j] = triangles[index].v1.x;
+                packedData->By[j] = triangles[index].v1.y;
+                packedData->Cx[j] = triangles[index].v2.x;
+                packedData->Cy[j] = triangles[index].v2.y;
+                packedData->Dx[j] = vertex.x;
+                packedData->Dy[j] = vertex.y;
+            } else {
+                packedData->Ax[j] = 0.0f;
+                packedData->Ay[j] = 0.0f;
+                packedData->Bx[j] = 0.0f;
+                packedData->By[j] = 0.0f;
+                packedData->Cx[j] = 0.0f;
+                packedData->Cy[j] = 0.0f;
+                packedData->Dx[j] = 0.0f;
+                packedData->Dy[j] = 0.0f;
+            }
+        }
+    }
+}
+
+
 std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles) {
     // std::unordered_set<Edge, EdgeHash> unique_edges;
     std::vector<Edge> edges;
     std::vector<Triangle> filtered_triangles;
 
-    //TODO: use unordered list for better perf
+    //TODO: use unordered list for better perf, hashing isnt working??
 
     // Remove triangles with circumcircles containing the vertex
     for (Triangle& triangle : triangles) {
@@ -179,6 +243,7 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
     }
 
     // Remove triangles that share verticies with super triangle
+    // NOTE: tried removeif but it was slower
     std::vector<Triangle> filtered_triangles;
     for (Triangle& triangle : triangles) {
         if (!(triangle.v0 == st.v0 || triangle.v0 == st.v1 || triangle.v0 == st.v2 ||
@@ -192,6 +257,15 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
 }
 
 
+void vornoi(std::vector<Triangle>& triangles) {
+    for (Triangle triangle : triangles) {
+        triangle.calculateCircumcenter();
+    }
+
+    // TODO: get neighbors + unique edges
+}
+
+
 int main(int argc, char **argv) {
     assert(argc == 2);
 
@@ -200,12 +274,30 @@ int main(int argc, char **argv) {
     std::vector<Vertex> points;
     int num_points = readPointsFile(filename, points);
 
-    std::cout << num_points << std::endl;
+    std::cout << "Num points:" << num_points << std::endl;
+
+    auto start = std::chrono::high_resolution_clock::now();
 
     // Get delaunay triangulation
     std::vector<Triangle> triangles = bowyerWatson(points);
 
-    std::cout << triangles.size() << std::endl;
+    auto end = std::chrono::high_resolution_clock::now();
+
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    std::cout << "Num triangles:" << triangles.size() << std::endl;
+
+    std::cout << "Delaunay time: " << duration.count() << "ms" << std::endl;
 
     // writeTrianglesFile("triangles.txt", triangles);
+
+    start = std::chrono::high_resolution_clock::now();
+
+    vornoi(triangles);
+
+    end = std::chrono::high_resolution_clock::now();
+
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    std::cout << "Vornoi time: " << duration.count() << "ms" << std::endl;
 }
