@@ -8,11 +8,14 @@
 #include "kernel1.h"
 #include "kernel2.h"
 
-//timing routine for reading the time stamp counter
+// kernel0 + kernel1
+// SIMD_SIZE * NUM_OPS * NUM ITER
+// #define OPS ((SIMD_SIZE * 30 * 6) + (SIMD_SIZE * 18 * 6))
+
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
-  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
-  return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+  __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+  return ((unsigned long long)lo) | (((unsigned long long)hi) << 32);
 }
 
 void check
@@ -163,6 +166,7 @@ int main(){
     printf("Speed-up: %f\n\n", (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_kernel1 / RUNS) * (MAX_FREQ/BASE_FREQ) )) / (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_kernel2 / RUNS) * (MAX_FREQ/BASE_FREQ) )));
   }
 
+  // Clean up
   free(Ax);
   free(Ay);
   free(Bx);
@@ -174,5 +178,6 @@ int main(){
   free(kernel1_out);
   free(kernel2_out);
   free(res);
+
   return 0;
 }
