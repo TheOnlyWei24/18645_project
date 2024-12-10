@@ -2,7 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-NUM_POINTS = 16000
+NUM_POINTS = 32000
 MAX_VAL = 500000
 
 class Vertex:

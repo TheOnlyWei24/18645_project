@@ -12,7 +12,7 @@
 
 #define SUPER_TRIANGLE_MAX 10000000
 
-#define NUM_TRIANGLES 32768
+#define NUM_TRIANGLES 31957
 
 #define NUM_ELEMS 256
 
@@ -63,7 +63,7 @@ struct Triangle {
         return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) > 0;
     }
 
-    float inCircumcircle(const Vertex& v) const {
+    bool inCircumcircle(const Vertex& v) const {
         float a = v0.x - v.x;
         float b = v0.y - v.y;
         float d = v1.x - v.x;
@@ -81,7 +81,7 @@ struct Triangle {
 
         float out = out0 + out1 + out2;
 
-        return out;
+        return out>0;
     }
 
     void calculateCircumcenter() {
@@ -181,7 +181,7 @@ void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, 
 }
 
 
-std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles) {
+std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles, packed_delaunay_points_t* packedData) {
     // std::unordered_set<Edge, EdgeHash> unique_edges;
     std::vector<Edge> edges;
     std::vector<Triangle> filtered_triangles;
@@ -189,8 +189,6 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     //TODO: use unordered list for better perf, hashing isnt working??
 
     // Pack delaunay data
-    packed_delaunay_points_t* packedData;
-    posix_memalign((void**) &packedData, ALIGNMENT, sizeof(packed_delaunay_points_t));
     packDelaunay(triangles, vertex, packedData);
 
     // Run kernel
@@ -199,6 +197,8 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     posix_memalign((void**) &det3_out, ALIGNMENT, kernelIter * DET3_KERNEL_SIZE * SIMD_SIZE * sizeof(float));
     float x = vertex.x;
     float y = vertex.y;
+
+    // #pragma omp parallel for private(x, y) num_threads(2)
     for (int i = 0; i < kernelIter; i++){
         kernel( (packedData->packedPoints[i].Ax),
                 (packedData->packedPoints[i].Ay),
@@ -210,7 +210,7 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
                 y, // Dy
                 &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE*i]);
     }
-
+    
     // int correct = 1;
     // for (int j = 0; j < triangles.size(); j++){
     //     int kernel_idx = j/16;
@@ -226,6 +226,7 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     int t = 0;
     for (Triangle& triangle : triangles) {
         if (det3_out[t] > 0) {
+        // if (triangle.inCircumcircle(vertex)) {
             // unique_edges.insert(Edge(triangle.v0, triangle.v1));
             // unique_edges.insert(Edge(triangle.v1, triangle.v2));
             // unique_edges.insert(Edge(triangle.v2, triangle.v0)); 
@@ -260,7 +261,6 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     }
     
     free(det3_out);
-    free(packedData);
     return filtered_triangles;
 }
 
@@ -271,9 +271,12 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
     Triangle st = superTriangle();
     triangles.push_back(st);
 
+    packed_delaunay_points_t* packedData;
+    posix_memalign((void**) &packedData, ALIGNMENT, sizeof(packed_delaunay_points_t));
+
     // Triangulate each vertex
     for (Vertex& vertex : points) {
-        triangles = addVertex(vertex, triangles);
+        triangles = addVertex(vertex, triangles, packedData);
     }
 
     // Remove triangles that share verticies with super triangle
@@ -289,6 +292,7 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
                                                triangle.v2 == st.v1 ||
                                                triangle.v2 == st.v2);}), triangles.end());
 
+    free(packedData);
     return triangles;
 }
 
