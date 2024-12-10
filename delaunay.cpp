@@ -1,19 +1,21 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <unordered_map> 
+#include <functional>
 #include <cmath>
 #include <limits>
 #include <algorithm>
+#include <chrono>
 #include <cassert>
 #include <immintrin.h> 
 #include "kernels/det3/kernel.h"
 
-#define NUM_TRIANGLES 2048 // NOTE: NEEDS TO MULTIPLE OF KERNEL_SIZE AS OF RN
-#define NUM_ELEMS 256
+using namespace std::chrono;
+
+#define NUM_ELEMS 100000
 #define ALIGNMENT 32
 #define SIMD_SIZE 8
-
-#define NUM_SIMD_IN_KERNEL (NUM_TRIANGLES / SIMD_SIZE)
 
 // Vertex class 
 struct Vertex {
@@ -117,6 +119,34 @@ std::vector<Edge> getBoundaryEdges(const std::vector<Edge>& edges) {
     return boundaryEdges;
 }
 
+struct EdgeHash {
+    std::size_t operator()(const Edge& edge) const {
+        std::size_t h1 = std::hash<float>()(edge.v0.x) ^ std::hash<float>()(edge.v0.y);
+        std::size_t h2 = std::hash<float>()(edge.v1.x) ^ std::hash<float>()(edge.v1.y);
+        // Combine the hashes for both vertices
+        return h1 ^ (h2 << 1);
+    }
+};
+
+void processEdges(const std::vector<Edge>& edges, std::vector<Triangle>& triangles, const Vertex& vertex) {
+    std::unordered_map<Edge, int, EdgeHash> edgeCount; // Use EdgeHash
+
+    // Count edge occurrences
+    for (const auto& edge : edges) {
+        edgeCount[edge]++;
+    }
+
+    // Reserve space in the triangles vector to avoid repeated allocations
+    triangles.reserve(triangles.size() + edgeCount.size());
+
+    // Add triangles for boundary edges directly
+    for (const auto& [edge, count] : edgeCount) {
+        if (count == 1) {
+            triangles.emplace_back(edge.v0, edge.v1, vertex);
+        }
+    }
+}
+
 
 // Create a super-triangle with all vertices
 Triangle createSuperTriangle(const std::vector<Vertex>& vertices) {
@@ -149,12 +179,10 @@ struct PackedPoints {
     float By[NUM_ELEMS];
     float Cx[NUM_ELEMS];
     float Cy[NUM_ELEMS];
-    float Dx[NUM_ELEMS];
-    float Dy[NUM_ELEMS];
 };
 
 // Function to pack triangles and one vertex for SIMD
-void packTrianglesAndVertex(const std::vector<Triangle>& triangles, const Vertex& vertex, PackedPoints* packedData) {
+void packTrianglesAndVertex(const std::vector<Triangle>& triangles, PackedPoints* packedData) {
     size_t numTriangles = triangles.size();
     size_t numSimdGroups = (numTriangles + SIMD_SIZE - 1) / SIMD_SIZE; // Correct rounding
 
@@ -168,17 +196,8 @@ void packTrianglesAndVertex(const std::vector<Triangle>& triangles, const Vertex
                 packedData->By[j] = triangles[index].v1.y;
                 packedData->Cx[j] = triangles[index].v2.x;
                 packedData->Cy[j] = triangles[index].v2.y;
-                packedData->Dx[j] = vertex.x;
-                packedData->Dy[j] = vertex.y;
             } else {
-                packedData->Ax[j] = 0.0f;
-                packedData->Ay[j] = 0.0f;
-                packedData->Bx[j] = 0.0f;
-                packedData->By[j] = 0.0f;
-                packedData->Cx[j] = 0.0f;
-                packedData->Cy[j] = 0.0f;
-                packedData->Dx[j] = 0.0f;
-                packedData->Dy[j] = 0.0f;
+                break;
             }
         }
     }
@@ -192,55 +211,54 @@ std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices, PackedPo
 
     for (const auto& vertex : vertices) {
         std::vector<Edge> edges;
-        packTrianglesAndVertex(triangles, vertex, packedData);
+        packTrianglesAndVertex(triangles, packedData);
 
         size_t numTriangles = triangles.size();
         size_t numSimdGroups = (numTriangles + SIMD_SIZE - 1) / SIMD_SIZE; // Round up to nearest 16
 
         // Initialize the allocated memory
-        memset(det3_out, 0, sizeof(float) * NUM_ELEMS);
+        // memset(det3_out, 0, sizeof(float) * NUM_ELEMS);
 
         kernel(packedData->Ax, packedData->Ay,
                 packedData->Bx, packedData->By,
                 packedData->Cx, packedData->Cy,
-                packedData->Dx, packedData->Dy,
+                vertex.x, vertex.y,
                 det3_out, numSimdGroups * SIMD_SIZE
         );
         
+        /*
         for (size_t i = 0; i < numSimdGroups; i++) {
             for (size_t j = 0; j < SIMD_SIZE; j++) {
                 size_t index = i * SIMD_SIZE + j;
-                // std::cerr << "det3_out[" << i << "][" << j << "]: " << det3_out[index] << std::endl;
+                std::cerr << "det3_out[" << i << "][" << j << "]: " << det3_out[index] << std::endl;
             }
         }
+        */
 
-        std::cerr << "numSimdGroups: " << numSimdGroups << ", numTriangles: " << numTriangles << "\n" << std::endl;
+        // std::cerr << "numSimdGroups: " << numSimdGroups << ", numTriangles: " << numTriangles << "\n" << std::endl;
 
-        for (auto it = triangles.begin(); it != triangles.end();) {
-            // Use indices or references instead of pointers
-            size_t index = std::distance(triangles.begin(), it);
+        std::vector<size_t> indicesToErase;
+        for (size_t i = 0; i < triangles.size(); ++i) {
+            size_t group = i / SIMD_SIZE;
+            size_t offset = i % SIMD_SIZE;
 
-            size_t group = index / SIMD_SIZE;
-            size_t offset = index % SIMD_SIZE;
-
-            // Avoid using invalidated pointers after reallocation
             if (group < numSimdGroups && det3_out[group * SIMD_SIZE + offset] > 0) {
-                edges.push_back(Edge(it->v0, it->v1));
-                edges.push_back(Edge(it->v1, it->v2));
-                edges.push_back(Edge(it->v2, it->v0));
-                it = triangles.erase(it); // Safe as no other iterator depends on `it`
-            } else {
-                ++it;
+                edges.push_back(Edge(triangles[i].v0, triangles[i].v1));
+                edges.push_back(Edge(triangles[i].v1, triangles[i].v2));
+                edges.push_back(Edge(triangles[i].v2, triangles[i].v0));
+                indicesToErase.push_back(i);
             }
         }
-
+        for (auto it = indicesToErase.rbegin(); it != indicesToErase.rend(); ++it) {
+            triangles.erase(triangles.begin() + *it);
+        }
 
         edges = getBoundaryEdges(edges);
         for (const auto& edge : edges) {
             triangles.emplace_back(edge.v0, edge.v1, vertex);
         }
     }
-    
+
     triangles.erase(std::remove_if(triangles.begin(), triangles.end(),
                                    [&superTriangle](const Triangle& triangle) {
                                        return (triangle.v0 == superTriangle.v0 ||
@@ -258,13 +276,31 @@ std::vector<Triangle> bowyerWatson(const std::vector<Vertex>& vertices, PackedPo
 }
 
 
-int main() {
-    std::vector<Vertex> vertices = {
-        Vertex(0, 0), Vertex(1, 2), Vertex(2, 4), Vertex(3, 1),
-        Vertex(4, 3), Vertex(5, 5), Vertex(6, 2), Vertex(7, 4),
-        Vertex(1, 5), Vertex(2, 6), Vertex(3, 7), Vertex(4, 6),
-        Vertex(5, 1), Vertex(6, 0), Vertex(7, 3), Vertex(8, 5)
-    };
+int main(int argc, char* argv[]) {
+    const int window_size = 16000; // Parameterized window size
+    
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " <num_points>" << std::endl;
+        return -1;
+    }
+
+    // Parse the number of points
+    int num_points = std::stoi(argv[1]);
+    if (num_points <= 0) {
+        std::cerr << "Error: Number of points must be positive." << std::endl;
+        return -1;
+    }
+
+    // Seed random number generator
+    srand(time(0));
+
+    // Generate random points within the window size
+    std::vector<Vertex> vertices;
+    for (int i = 0; i < num_points; ++i) {
+        float x = rand() % window_size; // Random x coordinate
+        float y = rand() % window_size; // Random y coordinate
+        vertices.emplace_back(x, y);
+    }
 
     PackedPoints* packedData = nullptr;
     if (posix_memalign((void**)&packedData, ALIGNMENT, sizeof(PackedPoints)) != 0) {
@@ -283,16 +319,29 @@ int main() {
         return -1;
     }
 
+    // Start measuring time
+    auto startDelaunay = high_resolution_clock::now();
+
     std::vector<Triangle> triangulation = bowyerWatson(vertices, packedData, det3_out);
 
+    // Stop measuring time
+    auto endDelaunay = high_resolution_clock::now();
+    auto delaunayDuration = duration_cast<milliseconds>(endDelaunay - startDelaunay).count();
+
+    // Print the elapsed time
+    std::cout << "Time taken by bowyerWatson: " << delaunayDuration << " ms\n";
+
+    /*
     for (const auto& triangle : triangulation) {
         std::cout << "Triangle: (" << triangle.v0.x << ", " << triangle.v0.y << ") -> ("
                   << triangle.v1.x << ", " << triangle.v1.y << ") -> ("
                   << triangle.v2.x << ", " << triangle.v2.y << "),\t" << "area (non-linearity check): " << triangle.area() << "\n";
     }
+    */
 
     // Free the allocated memory
     free(packedData);
+    free(det3_out);
 
     return 0;
 }
