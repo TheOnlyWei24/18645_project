@@ -1,5 +1,5 @@
 CC		= gcc
-CC_FLAGS 	= -O3 -std=c99 -march=native -mfma -mavx -mavx2
+CC_FLAGS 	= -O3 -std=c99 -march=native -mfma -mavx -mavx2 -fopenmp
 RM 		= rm -f
 
 default: all assemble
@@ -14,6 +14,9 @@ kernel_driver.x:
 
 assemble:
 	objdump -s -d -f --source ./kernel_driver.x > kernel_driver.S
+
+python:
+	$(CC) $(CC_FLAGS) -fPIC -shared kernel_driver.c -o kernel.so
 
 clean:
 	rm -rf *.x *.S

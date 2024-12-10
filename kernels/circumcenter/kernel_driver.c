@@ -1,8 +1,9 @@
-#include "baseline.h"
 #include "kernel.h"
 #include <math.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define BASE_FREQ 2.4
 
@@ -10,13 +11,19 @@
 
 #define ALIGNMENT 64
 
-#define NUM_ELEMS 6
-
 #define RUNS 100000
 
+#define KERNEL_ITERS_PER_THREAD 20
+
+#define NUM_THREADS 2
+
+#define KERNEL_ITERS (KERNEL_ITERS_PER_THREAD * NUM_THREADS)
+
 // kernel0 + kernel1
-// SIMD_SIZE * NUM_OPS * NUM ITER
-#define OPS ((SIMD_SIZE * 30 * 6) + (SIMD_SIZE * 18 * 6))
+// SIMD_SIZE * NUM_OPS * NUM_SIMD_IN_KERNEL
+#define OPS ((SIMD_SIZE * 30 * 6) + (SIMD_SIZE * 4 * 6))
+
+#define CACHELINE 64
 
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
@@ -25,93 +32,84 @@ static __inline__ unsigned long long rdtsc(void) {
 }
 
 int main(void) {
-  // Set up data structures
-  float *Ax;
-  float *Ay;
-  float *Bx;
-  float *By;
-  float *Cx;
-  float *Cy;
-  float *partUx;
-  float *partUy;
-  float *partD;
-  float *Ux;
-  float *Uy;
+  srand(time(NULL));
 
-  posix_memalign((void **)&Ax, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Ay, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Bx, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&By, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Cx, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Cy, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&partUx, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&partUy, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&partD, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Ux, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
-  posix_memalign((void **)&Uy, ALIGNMENT,
-                 NUM_ELEMS * SIMD_SIZE * sizeof(float));
+  // Set up data structures
+  kernel_data_t *data;
+  kernel_buffer_t *buffer;
+
+  posix_memalign((void **)&data, ALIGNMENT,
+                 KERNEL_ITERS * sizeof(kernel_data_t));
+  posix_memalign((void **)&buffer, ALIGNMENT,
+                 NUM_THREADS * sizeof(kernel_buffer_t));
 
   // Initialize data
-  for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++) {
-    Ax[i] = 0.0;
-    Ay[i] = 0.0;
-    Bx[i] = 1.0;
-    By[i] = 0.0;
-    Cx[i] = 0.5;
-    Cy[i] = 1.0;
-    partUx[i] = 0.0;
-    partUy[i] = 0.0;
-    partD[i] = 0.0;
-    Ux[i] = 0.0;
-    Uy[i] = 0.0;
+  for (int i = 0; i < KERNEL_ITERS; i++) {
+    for (int j = 0; j < NUM_SIMD_IN_KERNEL; j++) {
+      for (int k = 0; k < SIMD_SIZE; k++) {
+        data[i].data[j].Ax[k] = 0.0;
+        data[i].data[j].Ay[k] = 0.0;
+        data[i].data[j].Bx[k] = 1.0;
+        data[i].data[j].By[k] = 0.0;
+        data[i].data[j].Cx[k] = 0.5;
+        data[i].data[j].Cy[k] = 1.0;
+        // data[i].data[j].Ax[k] = rand();
+        // data[i].data[j].Ay[k] = rand();
+        // data[i].data[j].Bx[k] = rand();
+        // data[i].data[j].By[k] = rand();
+        // data[i].data[j].Cx[k] = rand();
+        // data[i].data[j].Cy[k] = rand();
+        data[i].data[j].Ux[k] = 0.0;
+        data[i].data[j].Uy[k] = 0.0;
+      }
+    }
   }
 
-  unsigned long long sum, t0, t1;
+  // Initialize buffer
+  for (int i = 0; i < NUM_THREADS; i++) {
+    for (int j = 0; j < NUM_SIMD_IN_KERNEL; j++) {
+      for (int k = 0; k < SIMD_SIZE; k++) {
+        buffer[i].buffer[j].partUx[k] = 0.0;
+        buffer[i].buffer[j].partUy[k] = 0.0;
+        buffer[i].buffer[j].partD[k] = 0.0;
+      }
+    }
+  }
 
-  sum = 0;
+  unsigned long long sum[NUM_THREADS * CACHELINE], t0[NUM_THREADS * CACHELINE],
+      t1[NUM_THREADS * CACHELINE];
+  for (int i = 0; i < NUM_THREADS; i++) {
+    sum[i * CACHELINE] = 0;
+    t0[i * CACHELINE] = 0;
+    t1[i * CACHELINE] = 0;
+  }
 
   // Test kernels
   for (int i = 0; i < RUNS; i++) {
-    t0 = rdtsc();
-    // kernel0(Ax, Ay, Bx, By, Cx, Cy, partUx, partUy, partD);
-    // kernel1(partD, partUx, partUy, Ux, Uy);
-    baseline(Ax, Ay, Bx, By, Cx, Cy, Ux, Uy);
-    t1 = rdtsc();
-    sum += (t1 - t0);
+#pragma omp parallel for num_threads(NUM_THREADS)
+    for (int j = 0; j < NUM_THREADS; j++) {
+      for (int k = 0; k < KERNEL_ITERS_PER_THREAD; k++) {
+        t0[j * CACHELINE] = rdtsc();
+        kernel0(&(data[j * KERNEL_ITERS_PER_THREAD + k]), &buffer[j]);
+        kernel1(&(data[j * KERNEL_ITERS_PER_THREAD + k]), &buffer[j]);
+        // baseline(&(data[j * KERNEL_ITERS_PER_THREAD + k]));
+        t1[j * CACHELINE] = rdtsc();
+        sum[j * CACHELINE] += (t1[j * CACHELINE] - t0[j * CACHELINE]);
+      }
+    }
   }
 
-  printf(" %lf\n",
-         (OPS) / ((double)(sum / (1.0 * RUNS)) * (MAX_FREQ / BASE_FREQ)));
+  // printf("%d\n", OPS * KERNEL_ITERS);
+  printf(" %lf\n", (OPS * KERNEL_ITERS_PER_THREAD) /
+                       ((double)(sum[0] / RUNS) * (MAX_FREQ / BASE_FREQ)));
 
-  printf("First kernel: %f %f\n", Ux[0], Uy[0]);
-  printf("Second kernel: %f %f\n", Ux[SIMD_SIZE], Uy[SIMD_SIZE]);
-  printf("Third kernel: %f %f\n", Ux[2 * SIMD_SIZE], Uy[2 * SIMD_SIZE]);
-  printf("Fourth kernel: %f %f\n", Ux[3 * SIMD_SIZE], Uy[3 * SIMD_SIZE]);
-  printf("Fifth kernel: %f %f\n", Ux[4 * SIMD_SIZE], Uy[4 * SIMD_SIZE]);
-  printf("Sixth kernel: %f %f\n", Ux[5 * SIMD_SIZE], Uy[5 * SIMD_SIZE]);
+  printf("First kernel: %f %f\n", data[0].data[0].Ux[0], data[0].data[0].Uy[0]);
+  // printf("Second kernel: %f %f\n", data[1].data[0].Ux[0],
+  //        data[1].data[0].Uy[0]);
 
   // Clean up
-  free(Ax);
-  free(Ay);
-  free(Bx);
-  free(By);
-  free(Cx);
-  free(Cy);
-  free(partUx);
-  free(partUy);
-  free(partD);
-  free(Ux);
-  free(Uy);
+  free(data);
+  free(buffer);
 
   return 0;
 }
