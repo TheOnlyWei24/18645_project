@@ -12,7 +12,7 @@
 
 #define SUPER_TRIANGLE_MAX 10000000
 
-#define NUM_TRIANGLES 31957
+#define NUM_TRIANGLES 32000
 
 #define NUM_ELEMS 256
 
@@ -181,7 +181,7 @@ void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, 
 }
 
 
-std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles, packed_delaunay_points_t* packedData) {
+std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles, packed_delaunay_points_t* packedData, float* det3_out) {
     // std::unordered_set<Edge, EdgeHash> unique_edges;
     std::vector<Edge> edges;
     std::vector<Triangle> filtered_triangles;
@@ -193,8 +193,6 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
 
     // Run kernel
     int kernelIter = (triangles.size() + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE);
-    float *det3_out;
-    posix_memalign((void**) &det3_out, ALIGNMENT, kernelIter * DET3_KERNEL_SIZE * SIMD_SIZE * sizeof(float));
     float x = vertex.x;
     float y = vertex.y;
 
@@ -260,7 +258,7 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
         filtered_triangles.emplace_back(Triangle(edge.v0, edge.v1, vertex));
     }
     
-    free(det3_out);
+    //free(det3_out);
     return filtered_triangles;
 }
 
@@ -273,10 +271,13 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
 
     packed_delaunay_points_t* packedData;
     posix_memalign((void**) &packedData, ALIGNMENT, sizeof(packed_delaunay_points_t));
+    int kernelIter = (NUM_TRIANGLES + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE) + 100;
+    float *det3_out;
+    posix_memalign((void**) &det3_out, ALIGNMENT, kernelIter * DET3_KERNEL_SIZE * SIMD_SIZE * sizeof(float));
 
     // Triangulate each vertex
     for (Vertex& vertex : points) {
-        triangles = addVertex(vertex, triangles, packedData);
+        triangles = addVertex(vertex, triangles, packedData, det3_out);
     }
 
     // Remove triangles that share verticies with super triangle
@@ -293,6 +294,7 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
                                                triangle.v2 == st.v2);}), triangles.end());
 
     free(packedData);
+    free(det3_out);
     return triangles;
 }
 
