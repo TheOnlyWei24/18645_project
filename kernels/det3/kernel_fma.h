@@ -14,8 +14,8 @@ static inline void kernel_sub
   float*     By,
   float*     Cx,
   float*     Cy,
-  float     Dx,
-  float     Dy,
+  float*     Dx,
+  float*     Dy,
   __m256*      a,
   __m256*      b,
   __m256*      d,
@@ -33,10 +33,8 @@ static inline void kernel_sub
   reg3 = _mm256_load_ps(&By[0]);
   reg4 = _mm256_load_ps(&Cx[0]);
   reg5 = _mm256_load_ps(&Cy[0]);
-  // reg6 = _mm256_load_ps(&Dx[0]);
-  // reg7 = _mm256_load_ps(&Dy[0]);
-  reg6 = _mm256_set1_ps(Dx); 
-  reg7 = _mm256_set1_ps(Dy);
+  reg6 = _mm256_load_ps(&Dx[0]);
+  reg7 = _mm256_load_ps(&Dy[0]);
 
   reg8  = _mm256_load_ps(&Ax[SIMD_SIZE]);
   reg9  = _mm256_load_ps(&Ay[SIMD_SIZE]);
@@ -119,30 +117,30 @@ static inline void kernel_square_add
   reg0 = _mm256_mul_ps(reg0, reg0);
   reg6 = _mm256_mul_ps(reg6, reg6);
   // b * b
-  reg1 = _mm256_mul_ps(reg1, reg1);
-  reg7 = _mm256_mul_ps(reg7, reg7);
+  // reg1 = _mm256_mul_ps(reg1, reg1);
+  // reg7 = _mm256_mul_ps(reg7, reg7);
   // d * d
   reg2 = _mm256_mul_ps(reg2, reg2);
   reg8 = _mm256_mul_ps(reg8, reg8);
   // e * e
-  reg3 = _mm256_mul_ps(reg3, reg3);
-  reg9 = _mm256_mul_ps(reg9, reg9);
+  // reg3 = _mm256_mul_ps(reg3, reg3);
+  // reg9 = _mm256_mul_ps(reg9, reg9);
   // g * g
   reg4 = _mm256_mul_ps(reg4, reg4);
   reg10 = _mm256_mul_ps(reg10, reg10);
   // h * h
-  reg5 = _mm256_mul_ps(reg5, reg5);
-  reg11 = _mm256_mul_ps(reg11, reg11);
+  // reg5 = _mm256_mul_ps(reg5, reg5);
+  // reg11 = _mm256_mul_ps(reg11, reg11);
 
   // c = a^2 + b^2
-  reg0 = _mm256_add_ps(reg0, reg1);
-  reg6 = _mm256_add_ps(reg6, reg7);
+  reg0 = _mm256_fmadd_ps(reg1, reg1, reg0);
+  reg6 = _mm256_fmadd_ps(reg7, reg7, reg6);
   // f = d^2 + e^2
-  reg2 = _mm256_add_ps(reg2, reg3);
-  reg8 = _mm256_add_ps(reg8, reg9);
+  reg2 = _mm256_fmadd_ps(reg3, reg3, reg2);
+  reg8 = _mm256_fmadd_ps(reg9, reg9, reg8);
   // i = g^2 + h^2
-  reg4 = _mm256_add_ps(reg4, reg5);
-  reg10 = _mm256_add_ps(reg10, reg11);
+  reg4 = _mm256_fmadd_ps(reg5, reg5, reg4);
+  reg10 = _mm256_fmadd_ps(reg11, reg11, reg10);
 
   // Store c
   c[0] = reg0;
@@ -169,100 +167,57 @@ static inline void kernel_det2
   __m256*      det2_out1,
   __m256*      det2_out2,
   __m256*      det2_out3
-){
+) {
   __m256 reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7;
-  __m256 reg8, reg9, reg10, reg11, reg12, reg13, reg14, reg15;
+  __m256 reg8, reg9, reg10, reg11, reg12, reg13;
 
-  reg0 = d[0];
-  reg1 = e[0];
-  reg2 = f[0];
-  reg3 = g[0];
-  reg4 = h[0];
-  reg5 = i[0];
+  // Load d, e, f, g, h, i for both parts
+  reg0 = d[0]; reg1 = e[0]; reg2 = f[0];
+  reg3 = g[0]; reg4 = h[0]; reg5 = i[0];
 
-  reg6 = d[1];
-  reg7 = e[1];
-  reg8 = f[1];
-  reg9 = g[1];
-  reg10 = h[1];
-  reg11 = i[1];
-
-  // ei = e * i
-  reg12 = _mm256_mul_ps(reg1, reg5);
-  reg13 = _mm256_mul_ps(reg7, reg11);
-
-  // eg = e * g
-  reg14 = _mm256_mul_ps(reg1, reg3);
-  reg15 = _mm256_mul_ps(reg7, reg9);
-  // reg1 and reg7 now free
-
-  // di = d * i
-  reg1 = _mm256_mul_ps(reg0, reg5);
-  reg7 = _mm256_mul_ps(reg6, reg11);
-  // reg5, reg11 now free
-
-  // fg = f * g
-  reg5 = _mm256_mul_ps(reg2, reg3);
-  reg11 = _mm256_mul_ps(reg8, reg9);
-  // reg3, reg9 now free
-
-  // dh = d*h
-  reg3 = _mm256_mul_ps(reg0, reg4);
-  reg9 = _mm256_mul_ps(reg6, reg10);
-  // reg0, reg6 now free
-
-  // fh = f*h
-  reg0 = _mm256_mul_ps(reg2, reg4);
-  reg6 = _mm256_mul_ps(reg8, reg10);
-  // reg2, reg4, reg8, reg10 now free
-
-  /*** Load a,b,c when I can ***/
-  reg2 = a[1];
-  reg4 = b[0];
-  reg8 = c[0];
-  reg10 = c[1];
+  reg6 = d[1]; reg7 = e[1]; reg8 = f[1];
+  reg9 = g[1]; reg10 = h[1]; reg11 = i[1];
 
   // ei - fh
-  reg12 = _mm256_sub_ps(reg12, reg0);
-  reg13 = _mm256_sub_ps(reg13, reg6);
-  // reg0, reg6 now free
-
-  /*** Load a,b,c when I can ***/
-  reg0 = a[0];
-  reg6 = b[1];
+  reg12 = _mm256_fmsub_ps(reg1, reg5, _mm256_mul_ps(reg2, reg4));  // (e * i) - (f * h) (part 1)
+  reg13 = _mm256_fmsub_ps(reg7, reg11, _mm256_mul_ps(reg8, reg10)); // (e * i) - (f * h) (part 2)
 
   // fg - di
-  reg5 = _mm256_sub_ps(reg5, reg1);
-  reg11 = _mm256_sub_ps(reg11, reg7);
-  // reg1, reg7 now free
+  reg2 = _mm256_fmsub_ps(reg2, reg3, _mm256_mul_ps(reg0, reg5));  // (f * g) - (d * i) (part 1)
+  reg8 = _mm256_fmsub_ps(reg8, reg9, _mm256_mul_ps(reg6, reg11)); // (f * g) - (d * i) (part 2)
 
   // dh - eg
-  reg3 = _mm256_sub_ps(reg3, reg14);
-  reg9 = _mm256_sub_ps(reg9, reg15);
-  // reg14, reg15 now free
+  reg3 = _mm256_fmsub_ps(reg0, reg4, _mm256_mul_ps(reg1, reg3));  // (d * h) - (e * g) (part 1)
+  reg9 = _mm256_fmsub_ps(reg6, reg10, _mm256_mul_ps(reg7, reg9)); // (d * h) - (e * g) (part 2)
+
+  // Load a, b, c for multiplication
+  reg0 = a[0]; reg6 = a[1];
+  reg1 = b[0]; reg7 = b[1];
+  reg4 = c[0]; reg10 = c[1];
 
   // a(ei-fh)
-  reg0 = _mm256_mul_ps(reg0, reg12);
-  reg2 = _mm256_mul_ps(reg2, reg13);
+  reg0 = _mm256_mul_ps(reg0, reg12);  // a * ((e * i) - (f * h)) (part 1)
+  reg6 = _mm256_mul_ps(reg6, reg13); // a * ((e * i) - (f * h)) (part 2)
 
   // b(fg-di)
-  reg4 = _mm256_mul_ps(reg4, reg5);
-  reg6 = _mm256_mul_ps(reg6, reg11);
+  reg1 = _mm256_mul_ps(reg1, reg2);  // b * ((f * g) - (d * i)) (part 1)
+  reg7 = _mm256_mul_ps(reg7, reg8); // b * ((f * g) - (d * i)) (part 2)
 
   // c(dh-eg)
-  reg8 = _mm256_mul_ps(reg8, reg3);
-  reg10 = _mm256_mul_ps(reg10, reg9);
-  
+  reg4 = _mm256_mul_ps(reg4, reg3);  // c * ((d * h) - (e * g)) (part 1)
+  reg10 = _mm256_mul_ps(reg10, reg9); // c * ((d * h) - (e * g)) (part 2)
+
   // Store det2_out1
   det2_out1[0] = reg0;
-  det2_out1[1] = reg2;
+  det2_out1[1] = reg6;
   // Store det2_out2
-  det2_out2[0] = reg4;
-  det2_out2[1] = reg6;
+  det2_out2[0] = reg1;
+  det2_out2[1] = reg7;
   // Store det2_out3
-  det2_out3[0] = reg8;
+  det2_out3[0] = reg4;
   det2_out3[1] = reg10;
 }
+
 
 void kernel
 (
@@ -272,8 +227,8 @@ void kernel
   float*     By,
   float*     Cx,
   float*     Cy,
-  float     Dx,
-  float     Dy,
+  float*     Dx,
+  float*     Dy,
   float*     det3_out,
   int num_elems
 ){
@@ -285,7 +240,7 @@ void kernel
   for (int idx = 0; idx < num_elems; idx += SIMD_SIZE * 2) {
     // Part 1
     kernel_sub(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx],
-               &Cx[idx], &Cy[idx], Dx, Dy,
+               &Cx[idx], &Cy[idx], &Dx[idx], &Dy[idx],
                a, b, d, e, g, h);
     kernel_square_add(a, b, c, d, e, f, g, h, i);
     kernel_det2(a, b, c, d, e, f, g, h, i, det2_out1, det2_out2, det2_out3);
