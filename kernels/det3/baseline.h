@@ -19,7 +19,7 @@ void baseline(float *Ax, float *Ay, float *Bx, float *By, float *Cx, float *Cy,
 
     float out0 = a * ((e * i) - (f * h));
     float out1 = b * ((f * g) - (d * i));
-    float out2 = c * ((d * g) - (e * g));
+    float out2 = c * ((d * h) - (e * g));
 
     out[z] = out0 + out1 + out2;
   }

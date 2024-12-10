@@ -13,7 +13,7 @@
 
 #define RUNS 100000
 
-#define KERNEL_ITERS_PER_THREAD 20
+#define KERNEL_ITERS_PER_THREAD 18
 
 #define NUM_THREADS 2
 
