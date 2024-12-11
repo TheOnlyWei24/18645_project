@@ -192,19 +192,6 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     float x = vertex.x;
     float y = vertex.y;
 
-<<<<<<< Updated upstream
-    for (int i = 0; i < kernelIter; i++) {
-        kernel((packedData->packedPoints[i].Ax),
-               (packedData->packedPoints[i].Ay),
-               (packedData->packedPoints[i].Bx),
-               (packedData->packedPoints[i].By),
-               (packedData->packedPoints[i].Cx),
-               (packedData->packedPoints[i].Cy),
-               x, // Dx
-               y, // Dy
-               &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE * i]);
-    }
-=======
     #pragma omp parallel for num_threads(2) schedule(static)
     for (int i = 0; i < kernelIter; i++){
         kernel( (packedData->packedPoints[i].Ax),
@@ -229,7 +216,6 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     // if (!correct){
     //     printf("INCORRECT\n");
     // }
->>>>>>> Stashed changes
 
     // Process triangles and collect edges
     int t = 0;
