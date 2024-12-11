@@ -3,8 +3,10 @@
 
 #include <immintrin.h>
 
-void kernel2(float * restrict Ax, float * restrict Ay, float * restrict Bx, float * restrict By, float * restrict Cx, float * restrict Cy,
-            float * restrict Dx, float * restrict Dy, float * restrict out) {
+#define SIMD_SIZE 8
+
+void kernel2(float * Ax, float * Ay, float * Bx, float * By, float * Cx, float * Cy,
+            float Dx, float Dy, float * out) {
 
   /*---------------------------------------------------------------------------
                           Starting 1st kernel
@@ -15,8 +17,8 @@ void kernel2(float * restrict Ax, float * restrict Ay, float * restrict Bx, floa
   __m256 reg3 = _mm256_load_ps(By);
   __m256 reg4 = _mm256_load_ps(Cx);
   __m256 reg5 = _mm256_load_ps(Cy);
-  __m256 reg6 = _mm256_load_ps(Dx);
-  __m256 reg7 = _mm256_load_ps(Dy);
+  __m256 reg6 = _mm256_set1_ps(Dx);
+  __m256 reg7 = _mm256_set1_ps(Dy);
 
   __m256 reg8 = _mm256_sub_ps(reg0, reg6);  // a = Ax - Dx
   __m256 reg9 = _mm256_sub_ps(reg1, reg7);  // b = Ay - Dy
@@ -64,8 +66,8 @@ void kernel2(float * restrict Ax, float * restrict Ay, float * restrict Bx, floa
   reg4 = _mm256_load_ps(Cx + SIMD_SIZE);
   reg5 = _mm256_load_ps(Cy + SIMD_SIZE);
   reg15 = _mm256_add_ps(reg13, reg15); // out0 + out1 + out2  --> KERNEL 1
-  reg6 = _mm256_load_ps(Dx + SIMD_SIZE);
-  reg7 = _mm256_load_ps(Dy + SIMD_SIZE);
+  reg6 = _mm256_set1_ps(Dx);
+  reg7 = _mm256_set1_ps(Dy);
 
   /*---------------------------------------------------------------------------
               Completing 1st kernel + 2nd kernel subtracts
@@ -123,8 +125,8 @@ void kernel2(float * restrict Ax, float * restrict Ay, float * restrict Bx, floa
   reg3 = _mm256_load_ps(By + (2 * SIMD_SIZE));
   reg4 = _mm256_load_ps(Cx + (2 * SIMD_SIZE));
   reg5 = _mm256_load_ps(Cy + (2 * SIMD_SIZE));
-  reg6 = _mm256_load_ps(Dx + (2 * SIMD_SIZE));
-  reg7 = _mm256_load_ps(Dy + (2 * SIMD_SIZE));
+  reg6 = _mm256_set1_ps(Dx);
+  reg7 = _mm256_set1_ps(Dy);
 
   /*---------------------------------------------------------------------------
               Completing 2nd kernel + 3rd kernel subtracts
@@ -182,8 +184,8 @@ void kernel2(float * restrict Ax, float * restrict Ay, float * restrict Bx, floa
   reg3 = _mm256_load_ps(By + (3 * SIMD_SIZE));
   reg4 = _mm256_load_ps(Cx + (3 * SIMD_SIZE));
   reg5 = _mm256_load_ps(Cy + (3 * SIMD_SIZE));
-  reg6 = _mm256_load_ps(Dx + (3 * SIMD_SIZE));
-  reg7 = _mm256_load_ps(Dy + (3 * SIMD_SIZE));
+  reg6 = _mm256_set1_ps(Dx);
+  reg7 = _mm256_set1_ps(Dy);
 
   /*---------------------------------------------------------------------------
               Completing 3rd kernel + 4th kernel subtracts

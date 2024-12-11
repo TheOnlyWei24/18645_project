@@ -139,10 +139,10 @@ Triangle superTriangle(void) {
 }
 
 struct delaunay_points {
-    float Ax[DET3_KERNEL_SIZE*SIMD_SIZE];
-    float Ay[DET3_KERNEL_SIZE*SIMD_SIZE];
-    float Bx[DET3_KERNEL_SIZE*SIMD_SIZE];
-    float By[DET3_KERNEL_SIZE*SIMD_SIZE];
+    float Ax[DET3_KERNEL_SIZE*SIMD_SIZE];  
+    float Ay[DET3_KERNEL_SIZE*SIMD_SIZE]; 
+    float Bx[DET3_KERNEL_SIZE*SIMD_SIZE]; 
+    float By[DET3_KERNEL_SIZE*SIMD_SIZE]; 
     float Cx[DET3_KERNEL_SIZE*SIMD_SIZE];
     float Cy[DET3_KERNEL_SIZE*SIMD_SIZE];
 };
@@ -156,7 +156,7 @@ typedef struct packed_delaunay_points packed_delaunay_points_t;
 void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, packed_delaunay_points_t* packedData) {
     size_t numTriangles = triangles.size();
     size_t numKernelIter = (numTriangles + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE); // Correct rounding
-
+    #pragma omp parallel for num_threads(2) schedule(static)
     for (size_t i = 0; i < numKernelIter; i++){
         for (size_t j = 0; j < SIMD_SIZE*DET3_KERNEL_SIZE; j++){
             size_t currentTriangle = i * (SIMD_SIZE*DET3_KERNEL_SIZE) + j;
@@ -192,6 +192,7 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     float x = vertex.x;
     float y = vertex.y;
 
+<<<<<<< Updated upstream
     for (int i = 0; i < kernelIter; i++) {
         kernel((packedData->packedPoints[i].Ax),
                (packedData->packedPoints[i].Ay),
@@ -203,6 +204,32 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
                y, // Dy
                &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE * i]);
     }
+=======
+    #pragma omp parallel for num_threads(2) schedule(static)
+    for (int i = 0; i < kernelIter; i++){
+        kernel( (packedData->packedPoints[i].Ax),
+                (packedData->packedPoints[i].Ay),
+                (packedData->packedPoints[i].Bx),
+                (packedData->packedPoints[i].By),
+                (packedData->packedPoints[i].Cx),
+                (packedData->packedPoints[i].Cy),
+                x, // Dx
+                y, // Dy
+                &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE*i]);
+    }
+
+    
+    // int correct = 1;
+    // for (int j = 0; j < triangles.size(); j++){
+    //     int kernel_idx = j/16;
+    //     int idx = j%16;
+    //     float res = triangles[j].inCircumcircle(vertex);
+    //     correct &= (fabs(det3_out[j] - res) < 1e-13);
+    // }
+    // if (!correct){
+    //     printf("INCORRECT\n");
+    // }
+>>>>>>> Stashed changes
 
     // Process triangles and collect edges
     int t = 0;
