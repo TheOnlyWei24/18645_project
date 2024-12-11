@@ -9,6 +9,7 @@
 #include <algorithm>
 #include "kernels/det3/kernel1.h"
 #include <omp.h>
+#include "kernels/circumcenter/kernel.h"
 
 #define SUPER_TRIANGLE_MAX 10000000
 
@@ -18,11 +19,9 @@
 
 #define ALIGNMENT 32
 
-#define SIMD_SIZE 8
-
-#define NUM_SIMD_IN_KERNEL (NUM_TRIANGLES / SIMD_SIZE)
-
 #define DET3_KERNEL_SIZE 2
+
+#define NUM_THREADS 1
 
 struct Vertex {
     float x, y;
@@ -106,6 +105,32 @@ struct EdgeHash {
     }
 };
 
+
+struct delaunay_points {
+    float Ax[DET3_KERNEL_SIZE*SIMD_SIZE];  
+    float Ay[DET3_KERNEL_SIZE*SIMD_SIZE]; 
+    float Bx[DET3_KERNEL_SIZE*SIMD_SIZE]; 
+    float By[DET3_KERNEL_SIZE*SIMD_SIZE]; 
+    float Cx[DET3_KERNEL_SIZE*SIMD_SIZE];
+    float Cy[DET3_KERNEL_SIZE*SIMD_SIZE];
+};
+typedef struct delaunay_points delaunay_points_t;
+
+
+struct packed_delaunay_points {
+    delaunay_points_t packedPoints[NUM_TRIANGLES/(DET3_KERNEL_SIZE*SIMD_SIZE)];
+};
+typedef struct packed_delaunay_points packed_delaunay_points_t;
+
+
+/**
+ * @brief Rounds x to the nearest multiple of n
+ */
+int roundUpToNearest(int x, int n) {
+    return ((x + n - 1) / n) * n;
+}
+
+
 int readPointsFile(std::string& filename, std::vector<Vertex>& points) {
     std::ifstream file(filename);
     assert(file.is_open());
@@ -138,25 +163,11 @@ Triangle superTriangle(void) {
     return Triangle(v0, v1, v2);
 }
 
-struct delaunay_points {
-    float Ax[DET3_KERNEL_SIZE*SIMD_SIZE];  
-    float Ay[DET3_KERNEL_SIZE*SIMD_SIZE]; 
-    float Bx[DET3_KERNEL_SIZE*SIMD_SIZE]; 
-    float By[DET3_KERNEL_SIZE*SIMD_SIZE]; 
-    float Cx[DET3_KERNEL_SIZE*SIMD_SIZE];
-    float Cy[DET3_KERNEL_SIZE*SIMD_SIZE];
-};
-typedef struct delaunay_points delaunay_points_t;
-
-struct packed_delaunay_points {
-    delaunay_points_t packedPoints[NUM_TRIANGLES/(DET3_KERNEL_SIZE*SIMD_SIZE)];
-};
-typedef struct packed_delaunay_points packed_delaunay_points_t;
 
 void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, packed_delaunay_points_t* packedData) {
     size_t numTriangles = triangles.size();
     size_t numKernelIter = (numTriangles + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE); // Correct rounding
-    #pragma omp parallel for num_threads(4) schedule(static)
+    #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
     for (size_t i = 0; i < numKernelIter; i++){
         for (size_t j = 0; j < SIMD_SIZE*DET3_KERNEL_SIZE; j++){
             size_t currentTriangle = i * (SIMD_SIZE*DET3_KERNEL_SIZE) + j;
@@ -192,7 +203,7 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     float x = vertex.x;
     float y = vertex.y;
 
-    #pragma omp parallel for num_threads(4) schedule(static)
+    #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
     for (int i = 0; i < kernelIter; i++){
         kernel( (packedData->packedPoints[i].Ax),
                 (packedData->packedPoints[i].Ay),
@@ -204,18 +215,6 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
                 y, // Dy
                 &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE*i]);
     }
-
-    
-    // int correct = 1;
-    // for (int j = 0; j < triangles.size(); j++){
-    //     int kernel_idx = j/16;
-    //     int idx = j%16;
-    //     float res = triangles[j].inCircumcircle(vertex);
-    //     correct &= (fabs(det3_out[j] - res) < 1e-13);
-    // }
-    // if (!correct){
-    //     printf("INCORRECT\n");
-    // }
 
     // Process triangles and collect edges
     int t = 0;
@@ -282,11 +281,65 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
 
 
 void vornoi(std::vector<Triangle>& triangles) {
-    for (Triangle triangle : triangles) {
-        triangle.calculateCircumcenter();
+    size_t numTriangles = roundUpToNearest(triangles.size(), (SIMD_SIZE * NUM_SIMD_IN_KERNEL));
+    size_t numKernelIters = numTriangles / (SIMD_SIZE * NUM_SIMD_IN_KERNEL);
+    
+    // Pack data
+    kernel_data_t *data;
+    kernel_buffer_t *buffer;
+    posix_memalign((void **)&data, ALIGNMENT, numKernelIters * sizeof(kernel_data_t));
+    posix_memalign((void **)&buffer, ALIGNMENT, NUM_THREADS * sizeof(kernel_buffer_t));
+
+   #pragma omp parallel for num_threads(NUM_THREADS) 
+    for (int i = 0; i < numKernelIters; i++) {
+      for (int j = 0; j < NUM_SIMD_IN_KERNEL; j++) {
+        for (int k = 0; k < SIMD_SIZE; k++) {
+            size_t currTriangle = (i * NUM_SIMD_IN_KERNEL * SIMD_SIZE) + 
+                                  (j * SIMD_SIZE) + k;
+            if (currTriangle < triangles.size()) {
+                data[i].data[j].Ax[k] = triangles[currTriangle].v0.x;
+                data[i].data[j].Ay[k] = triangles[currTriangle].v0.y;
+                data[i].data[j].Bx[k] = triangles[currTriangle].v1.x;
+                data[i].data[j].By[k] = triangles[currTriangle].v1.y;
+                data[i].data[j].Cx[k] = triangles[currTriangle].v2.x;
+                data[i].data[j].Cy[k] = triangles[currTriangle].v2.y;
+                data[i].data[j].Ux[k] = 0.0;
+                data[i].data[j].Uy[k] = 0.0;
+            }
+        }
+      }
     }
 
-    // TODO: get neighbors + unique edges
+    #pragma omp parallel for num_threads(NUM_THREADS)
+    for (int i = 0; i < numKernelIters; i++) {
+        vornoi_kernel0(&(data[i]), buffer);
+        vornoi_kernel1(&(data[i]), buffer);
+        // vornoi_baseline(&data[i]);
+    }
+
+    // Unpack data
+    #pragma omp parallel for num_threads(NUM_THREADS)
+    for (int i = 0; i < numKernelIters; i++) {
+      for (int j = 0; j < NUM_SIMD_IN_KERNEL; j++) {
+        for (int k = 0; k < SIMD_SIZE; k++) {
+            size_t currTriangle = (i * NUM_SIMD_IN_KERNEL * SIMD_SIZE) + 
+                                  (j * SIMD_SIZE) + k;
+            if (currTriangle < triangles.size()) {
+                triangles[currTriangle].circumcenter.x = data[i].data[j].Ux[k];
+                triangles[currTriangle].circumcenter.y = data[i].data[j].Uy[k];
+            }
+        }
+      }
+    }
+
+    // for (Triangle triangle : triangles) {
+    //     triangle.calculateCircumcenter();
+    // }
+
+    // TODO: get neighbors + unique edges ?
+
+    free(data);
+    free(buffer);
 }
 
 
@@ -321,7 +374,7 @@ int main(int argc, char **argv) {
 
     end = std::chrono::high_resolution_clock::now();
 
-    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    auto tmp = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
 
-    std::cout << "Vornoi time: " << duration.count() << "ms" << std::endl;
+    std::cout << "Vornoi time: " << tmp.count() << "ns" << std::endl;
 }

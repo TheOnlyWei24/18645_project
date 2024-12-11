@@ -34,19 +34,18 @@ static __inline__ unsigned long long rdtsc(void) {
 }
 
 int main(void) {
-  srand(time(NULL));
 
   // Set up data structures
   kernel_data_t *data;
   kernel_buffer_t *buffer;
   int thread_counts[6] = {1, 2, 4, 8, 16, 32};
 
-  for (int t = 0; t<6; t++){
+  for (int t = 0; t < 6; t++) {
     int NUM_THREADS = thread_counts[t];
     posix_memalign((void **)&data, ALIGNMENT,
-                  KERNEL_ITERS * sizeof(kernel_data_t));
+                   KERNEL_ITERS * sizeof(kernel_data_t));
     posix_memalign((void **)&buffer, ALIGNMENT,
-                  NUM_THREADS * sizeof(kernel_buffer_t));
+                   NUM_THREADS * sizeof(kernel_buffer_t));
 
     // Initialize data
     for (int i = 0; i < KERNEL_ITERS; i++) {
@@ -58,12 +57,6 @@ int main(void) {
           data[i].data[j].By[k] = 0.0;
           data[i].data[j].Cx[k] = 0.5;
           data[i].data[j].Cy[k] = 1.0;
-          // data[i].data[j].Ax[k] = rand();
-          // data[i].data[j].Ay[k] = rand();
-          // data[i].data[j].Bx[k] = rand();
-          // data[i].data[j].By[k] = rand();
-          // data[i].data[j].Cx[k] = rand();
-          // data[i].data[j].Cy[k] = rand();
           data[i].data[j].Ux[k] = 0.0;
           data[i].data[j].Uy[k] = 0.0;
         }
@@ -86,34 +79,41 @@ int main(void) {
     // Test kernels
     for (int i = 0; i < RUNS; i++) {
       int buff_idx = 0;
-      if(thread_counts[t]==1){
-        
+      if (thread_counts[t] == 1) {
+
         for (int j = 0; j < KERNEL_ITERS; j++) {
-          //buff_idx = j/(KERNEL_ITERS/NUM_THREADS);
+          // buff_idx = j/(KERNEL_ITERS/NUM_THREADS);
           t0 = rdtsc();
           kernel0(&(data[j]), &buffer[0]);
           kernel1(&(data[j]), &buffer[0]);
-          //printf("Test: %d, %d, %d\n", j, j/KERNEL_ITERS_PER_THREAD, KERNEL_ITERS);
+          // printf("Test: %d, %d, %d\n", j, j/KERNEL_ITERS_PER_THREAD,
+          // KERNEL_ITERS);
           t1 = rdtsc();
-          sum += (t1 - t0); 
+          sum += (t1 - t0);
         }
-      }
-      else{
+      } else {
         t0 = rdtsc();
-        #pragma omp parallel for private(buff_idx) num_threads(NUM_THREADS) reduction(+:sum)
+#pragma omp parallel for private(buff_idx) num_threads(NUM_THREADS)            \
+    reduction(+ : sum)
         for (int j = 0; j < KERNEL_ITERS; j++) {
-          buff_idx = j/(KERNEL_ITERS/NUM_THREADS);
+          buff_idx = j / (KERNEL_ITERS / NUM_THREADS);
           kernel0(&(data[j]), &buffer[buff_idx]);
           kernel1(&(data[j]), &buffer[buff_idx]);
-          //printf("Test: %d, %d, %d\n", j, j/KERNEL_ITERS_PER_THREAD, KERNEL_ITERS);
+          // printf("Test: %d, %d, %d\n", j, j/KERNEL_ITERS_PER_THREAD,
+          // KERNEL_ITERS);
         }
         t1 = rdtsc();
-        sum += (t1 - t0); 
+        sum += (t1 - t0);
       }
     }
 
     // printf("%d\n", OPS * KERNEL_ITERS);
-    printf("Thread_count: %d, Wall time: %lld, Throughput: %lf, Iter_per_thread: %lf\n", thread_counts[t], sum, (OPS * KERNEL_ITERS) / ((double)(sum / RUNS) * (MAX_FREQ / BASE_FREQ)), (double)KERNEL_ITERS/(double)NUM_THREADS);
+    printf("Thread_count: %d, Wall time: %lld, Throughput: %lf, "
+           "Iter_per_thread: %lf\n",
+           thread_counts[t], sum,
+           (OPS * KERNEL_ITERS) /
+               ((double)(sum / RUNS) * (MAX_FREQ / BASE_FREQ)),
+           (double)KERNEL_ITERS / (double)NUM_THREADS);
   }
 
   // Clean up
