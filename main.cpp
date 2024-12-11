@@ -182,83 +182,51 @@ void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, 
 
 
 std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles, packed_delaunay_points_t* packedData, float* det3_out) {
-    // std::unordered_set<Edge, EdgeHash> unique_edges;
-    std::vector<Edge> edges;
+    std::unordered_set<Edge, EdgeHash> unique_edges; 
     std::vector<Triangle> filtered_triangles;
-
-    //TODO: use unordered list for better perf, hashing isnt working??
 
     // Pack delaunay data
     packDelaunay(triangles, vertex, packedData);
 
-    // Run kernel
-    int kernelIter = (triangles.size() + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE);
+    int kernelIter = (triangles.size() + (SIMD_SIZE * DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE * DET3_KERNEL_SIZE);
     float x = vertex.x;
     float y = vertex.y;
 
-    // #pragma omp parallel for private(x, y) num_threads(2)
-    for (int i = 0; i < kernelIter; i++){
-        kernel( (packedData->packedPoints[i].Ax),
-                (packedData->packedPoints[i].Ay),
-                (packedData->packedPoints[i].Bx),
-                (packedData->packedPoints[i].By),
-                (packedData->packedPoints[i].Cx),
-                (packedData->packedPoints[i].Cy),
-                x, // Dx
-                y, // Dy
-                &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE*i]);
+    for (int i = 0; i < kernelIter; i++) {
+        kernel((packedData->packedPoints[i].Ax),
+               (packedData->packedPoints[i].Ay),
+               (packedData->packedPoints[i].Bx),
+               (packedData->packedPoints[i].By),
+               (packedData->packedPoints[i].Cx),
+               (packedData->packedPoints[i].Cy),
+               x, // Dx
+               y, // Dy
+               &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE * i]);
     }
-    
-    // int correct = 1;
-    // for (int j = 0; j < triangles.size(); j++){
-    //     int kernel_idx = j/16;
-    //     int idx = j%16;
-    //     float res = triangles[j].inCircumcircle(vertex);
-    //     correct &= (fabs(det3_out[j] - res) < 1e-13);
-    // }
-    // if (!correct){
-    //     printf("INCORRECT\n");
-    // }
 
-    // Remove triangles with circumcircles containing the vertex
+    // Process triangles and collect edges
     int t = 0;
     for (Triangle& triangle : triangles) {
         if (det3_out[t] > 0) {
-        // if (triangle.inCircumcircle(vertex)) {
-            // unique_edges.insert(Edge(triangle.v0, triangle.v1));
-            // unique_edges.insert(Edge(triangle.v1, triangle.v2));
-            // unique_edges.insert(Edge(triangle.v2, triangle.v0)); 
-            edges.emplace_back(Edge(triangle.v0, triangle.v1));
-            edges.emplace_back(Edge(triangle.v1, triangle.v2));
-            edges.emplace_back(Edge(triangle.v2, triangle.v0));
+            // Add edges of the triangle to the unique edges set
+            Edge e1(triangle.v0, triangle.v1);
+            Edge e2(triangle.v1, triangle.v2);
+            Edge e3(triangle.v2, triangle.v0);
+
+            // Insert or erase edges to ensure uniqueness
+            if (!unique_edges.insert(e1).second) unique_edges.erase(e1);
+            if (!unique_edges.insert(e2).second) unique_edges.erase(e2);
+            if (!unique_edges.insert(e3).second) unique_edges.erase(e3);
         } else {
-          filtered_triangles.emplace_back(triangle);
+            filtered_triangles.push_back(triangle);
         }
         t++;
     }
 
-    // Get unique edges
-    std::vector<Edge> unique_edges;
-    for (int i = 0; i < edges.size(); i++) {
-        bool valid = true;
-        for (int j = 0; j < edges.size(); j++) {
-            if (i != j && edges[i] == edges[j]) {
-                valid = false;
-                break;
-            }
-        }
-
-        if (valid) {
-            unique_edges.emplace_back(edges[i]);
-        }
-    }
-
-    // Create new triangles from the unique edges and new vertex
-    for (Edge edge : unique_edges) {
+    for (const Edge& edge : unique_edges) {
         filtered_triangles.emplace_back(Triangle(edge.v0, edge.v1, vertex));
     }
-    
-    //free(det3_out);
+
     return filtered_triangles;
 }
 
