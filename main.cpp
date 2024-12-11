@@ -22,7 +22,7 @@
 
 #define DET3_KERNEL_SIZE 2
 
-#define NUM_THREADS 4
+#define NUM_THREADS 1
 
 float* kernel_buffer0;
 float* kernel_buffer1;
@@ -62,10 +62,8 @@ struct Edge {
 struct Triangle {
     Vertex v0, v1, v2;
     Vertex circumcenter;
-    Edge e0, e1, e2;
 
-    Triangle(const Vertex& v0_, const Vertex& v1_, const Vertex& v2_)
-        : v0(v0_), v1(v1_), v2(v2_), e0(v0_, v1_), e1(v1_, v2_), e2(v2_, v0_) {
+    Triangle(const Vertex& v0_, const Vertex& v1_, const Vertex& v2_) : v0(v0_), v1(v1_), v2(v2_) {
         // Check if the vertices are in counter-clockwise order
         if (!isCounterClockwise(v0, v1, v2)) {
             std::swap(v1, v2);
@@ -431,24 +429,26 @@ std::vector<Edge> vornoi(std::vector<Triangle>& triangles) {
     // for (Triangle triangle : triangles) {
     //     triangle.calculateCircumcenter();
     // }
-
-    // Get vornoi edges
+ 
+    /*
+        Get vornoi edges
+        If two triangles are neighbors (share an edge) we connect their circumcenters
+        to form a vornoi edge
+    */
     std::unordered_set<Edge, EdgeHash> vornoi_edges; 
     for (int i = 0; i < triangles.size(); i++) {
+        Edge e0(triangles[i].v0, triangles[i].v1);
+        Edge e1(triangles[i].v1, triangles[i].v2);
+        Edge e2(triangles[i].v2, triangles[i].v0);
         for (int j = 0; j < triangles.size(); j++) {
             if (i != j) {
-                if (triangles[i].e0 == triangles[j].e0 || 
-                    triangles[i].e0 == triangles[j].e1 || 
-                    triangles[i].e0 == triangles[j].e2) {
-                    vornoi_edges.insert(triangles[i].e0);
-                } else if (triangles[i].e1 == triangles[j].e0 || 
-                           triangles[i].e1 == triangles[j].e1 || 
-                           triangles[i].e1 == triangles[j].e2) {
-                    vornoi_edges.insert(triangles[i].e1);
-                } else if (triangles[i].e2 == triangles[j].e0 || 
-                           triangles[i].e2 == triangles[j].e1 || 
-                           triangles[i].e2 == triangles[j].e2) {
-                    vornoi_edges.insert(triangles[i].e2);
+                Edge tmp_e0(triangles[j].v0, triangles[j].v1);
+                Edge tmp_e1(triangles[j].v1, triangles[j].v2);
+                Edge tmp_e2(triangles[j].v2, triangles[j].v0);
+                if (e0 == tmp_e0 || e0 == tmp_e1 ||  e0 == tmp_e2 || 
+                    e1 == tmp_e0 || e1 == tmp_e1 ||  e1 == tmp_e2 ||
+                    e2 == tmp_e0 || e2 == tmp_e1 ||  e2 == tmp_e2) {
+                    vornoi_edges.insert(Edge(triangles[i].circumcenter, triangles[j].circumcenter));
                 }
             }
         }
