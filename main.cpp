@@ -22,7 +22,7 @@
 
 #define DET3_KERNEL_SIZE 2
 
-#define NUM_THREADS 1
+#define NUM_THREADS 4
 
 float* kernel_buffer0;
 float* kernel_buffer1;
@@ -62,9 +62,10 @@ struct Edge {
 struct Triangle {
     Vertex v0, v1, v2;
     Vertex circumcenter;
+    Edge e0, e1, e2;
 
     Triangle(const Vertex& v0_, const Vertex& v1_, const Vertex& v2_)
-        : v0(v0_), v1(v1_), v2(v2_) {
+        : v0(v0_), v1(v1_), v2(v2_), e0(v0_, v1_), e1(v1_, v2_), e2(v2_, v0_) {
         // Check if the vertices are in counter-clockwise order
         if (!isCounterClockwise(v0, v1, v2)) {
             std::swap(v1, v2);
@@ -375,7 +376,7 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
 }
 
 
-void vornoi(std::vector<Triangle>& triangles) {
+std::vector<Edge> vornoi(std::vector<Triangle>& triangles) {
     size_t numTriangles = roundUpToNearest(triangles.size(), (SIMD_SIZE * NUM_SIMD_IN_KERNEL));
     size_t numKernelIters = numTriangles / (SIMD_SIZE * NUM_SIMD_IN_KERNEL);
     
@@ -431,10 +432,34 @@ void vornoi(std::vector<Triangle>& triangles) {
     //     triangle.calculateCircumcenter();
     // }
 
-    // TODO: get neighbors + unique edges ?
+    // Get vornoi edges
+    std::unordered_set<Edge, EdgeHash> vornoi_edges; 
+    for (int i = 0; i < triangles.size(); i++) {
+        for (int j = 0; j < triangles.size(); j++) {
+            if (i != j) {
+                if (triangles[i].e0 == triangles[j].e0 || 
+                    triangles[i].e0 == triangles[j].e1 || 
+                    triangles[i].e0 == triangles[j].e2) {
+                    vornoi_edges.insert(triangles[i].e0);
+                } else if (triangles[i].e1 == triangles[j].e0 || 
+                           triangles[i].e1 == triangles[j].e1 || 
+                           triangles[i].e1 == triangles[j].e2) {
+                    vornoi_edges.insert(triangles[i].e1);
+                } else if (triangles[i].e2 == triangles[j].e0 || 
+                           triangles[i].e2 == triangles[j].e1 || 
+                           triangles[i].e2 == triangles[j].e2) {
+                    vornoi_edges.insert(triangles[i].e2);
+                }
+            }
+        }
+    }
+
+    std::vector<Edge> edges(vornoi_edges.begin(), vornoi_edges.end());
 
     free(data);
     free(buffer);
+
+    return edges;
 }
 
 
@@ -465,11 +490,12 @@ int main(int argc, char **argv) {
 
     start = std::chrono::high_resolution_clock::now();
 
-    vornoi(triangles);
+    std::vector<Edge> edges = vornoi(triangles);
 
     end = std::chrono::high_resolution_clock::now();
 
-    auto tmp = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    //auto tmp = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    auto tmp = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
     std::cout << "Vornoi time: " << tmp.count() << "ns" << std::endl;
 }
