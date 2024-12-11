@@ -5,6 +5,7 @@
 
 #define SIMD_SIZE 8
 
+void kernel(float * Ax, float * Ay, float * Bx, float * By, float * Cx, float * Cy,
             float Dx, float Dy, float * out) {
 
   /*---------------------------------------------------------------------------

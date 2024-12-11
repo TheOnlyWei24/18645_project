@@ -178,16 +178,36 @@ void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, 
         //printf("tri: %d, iter: %d\n", numTriangles, numKernelIter);
         float* buffer;
         buffer = kernel_buffer0;
+        buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+1] = vertex.x;
+        buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+2] = vertex.y;
         for (size_t i = 0; i < numKernelIter; i++){
             for (size_t j = 0; j < SIMD_SIZE*DET3_KERNEL_SIZE; j++){
                 size_t currentTriangle = i * (SIMD_SIZE*DET3_KERNEL_SIZE) + j;
                 if (currentTriangle < triangles.size()){
+                    buffer[j]    = triangles[currentTriangle].v0.x;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE] = triangles[currentTriangle].v0.y;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*2] = triangles[currentTriangle].v1.x;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*3] = triangles[currentTriangle].v1.y;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*4] = triangles[currentTriangle].v2.x;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*5] = triangles[currentTriangle].v2.y;
             } 
                 else{
                     buffer[j]    = 0.0;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE]  = 0.0;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*2] = 0.0;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*3] = 0.0;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*4] = 0.0;
+                    buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*5] = 0.0;
                 }
             }
             kernel( (&buffer[0]),
+                    (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE]),
+                    (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE*2]),
+                    (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE*3]),
+                    (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE*4]),
+                    (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE*5]),
+                    (buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+1]), // Dx
+                    (buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+2]), // Dy
                     &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE*i]);
         }
     }
@@ -216,21 +236,42 @@ void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, 
                 end = numKernelIter;
                 buffer = kernel_buffer3;
             }
+            buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+1] = vertex.x;
+            buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+2] = vertex.y;
             for (size_t i = start; i < end; i++){
                 for (size_t j = 0; j < SIMD_SIZE*DET3_KERNEL_SIZE; j++){
                     size_t currentTriangle = i * (SIMD_SIZE*DET3_KERNEL_SIZE) + j;
                     if (currentTriangle < triangles.size()){
+                        buffer[j]    = triangles[currentTriangle].v0.x;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE] = triangles[currentTriangle].v0.y;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*2] = triangles[currentTriangle].v1.x;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*3] = triangles[currentTriangle].v1.y;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*4] = triangles[currentTriangle].v2.x;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*5] = triangles[currentTriangle].v2.y;
                 } 
                     else{
                         buffer[j]    = 0.0;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE]  = 0.0;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*2] = 0.0;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*3] = 0.0;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*4] = 0.0;
+                        buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*5] = 0.0;
                     }
                 }
                 kernel( (&buffer[0]),
+                        (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE]),
+                        (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE*2]),
+                        (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE*3]),
+                        (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE*4]),
+                        (&buffer[SIMD_SIZE*DET3_KERNEL_SIZE*5]),
+                        (buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+1]), // Dx
+                        (buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+2]), // Dy
                         &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE*i]);
             }
         }
     }
 }
+
 
 
 std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles, packed_delaunay_points_t* packedData, float* det3_out) {
@@ -297,6 +338,10 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
     int kernelIter = (NUM_TRIANGLES + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE) + 100;
     float *det3_out;
     posix_memalign((void**) &det3_out, ALIGNMENT, kernelIter * DET3_KERNEL_SIZE * SIMD_SIZE * sizeof(float));
+    posix_memalign((void**) &kernel_buffer0, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
+    posix_memalign((void**) &kernel_buffer1, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
+    posix_memalign((void**) &kernel_buffer2, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
+    posix_memalign((void**) &kernel_buffer3, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
 
     // Triangulate each vertex
     for (Vertex& vertex : points) {
