@@ -12,7 +12,7 @@
 
 #define SUPER_TRIANGLE_MAX 10000000
 
-#define NUM_TRIANGLES 32000
+#define NUM_TRIANGLES 64000
 
 #define NUM_ELEMS 256
 
@@ -156,7 +156,7 @@ typedef struct packed_delaunay_points packed_delaunay_points_t;
 void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, packed_delaunay_points_t* packedData) {
     size_t numTriangles = triangles.size();
     size_t numKernelIter = (numTriangles + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE); // Correct rounding
-    #pragma omp parallel for num_threads(2) schedule(static)
+    #pragma omp parallel for num_threads(4) schedule(static)
     for (size_t i = 0; i < numKernelIter; i++){
         for (size_t j = 0; j < SIMD_SIZE*DET3_KERNEL_SIZE; j++){
             size_t currentTriangle = i * (SIMD_SIZE*DET3_KERNEL_SIZE) + j;
@@ -192,7 +192,7 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     float x = vertex.x;
     float y = vertex.y;
 
-    #pragma omp parallel for num_threads(2) schedule(static)
+    #pragma omp parallel for num_threads(4) schedule(static)
     for (int i = 0; i < kernelIter; i++){
         kernel( (packedData->packedPoints[i].Ax),
                 (packedData->packedPoints[i].Ay),
@@ -221,6 +221,7 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     int t = 0;
     for (Triangle& triangle : triangles) {
         if (det3_out[t] > 0) {
+        // if (triangle.inCircumcircle(vertex)) {
             // Add edges of the triangle to the unique edges set
             Edge e1(triangle.v0, triangle.v1);
             Edge e2(triangle.v1, triangle.v2);
