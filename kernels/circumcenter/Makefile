@@ -2,18 +2,22 @@ CC		= gcc
 CC_FLAGS 	= -O3 -std=c99 -march=native -mfma -mavx -mavx2 -fopenmp
 RM 		= rm -f
 
-default: all assemble
+all: serial 
 
-all: kernel
+serial: kernel_driver_serial.x
+	./kernel_driver_serial.x
 
-kernel: kernel_driver.x
-	./kernel_driver.x
+omp: kernel_driver_omp.x
+	./kernel_driver_omp.x
 
-kernel_driver.x:
-	$(CC) $(CC_FLAGS) -o kernel_driver.x kernel_driver.c 
+kernel_driver_serial.x:
+	$(CC) $(CC_FLAGS) -o kernel_driver_serial.x kernel_driver_serial.c 
+
+kernel_driver_omp.x:
+	$(CC) $(CC_FLAGS) -o kernel_driver_omp.x kernel_driver_omp.c 
 
 assemble:
-	objdump -s -d -f --source ./kernel_driver.x > kernel_driver.S
+	objdump -s -d -f --source ./kernel_driver_serial.x > kernel_driver_serial.S
 
 clean:
 	rm -rf *.x *.S

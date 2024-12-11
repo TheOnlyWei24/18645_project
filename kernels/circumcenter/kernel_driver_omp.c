@@ -13,12 +13,6 @@
 
 #define RUNS 10000
 
-// #define KERNEL_ITERS_PER_THREAD 1024
-
-// #define NUM_THREADS 1
-
-// #define KERNEL_ITERS (KERNEL_ITERS_PER_THREAD * NUM_THREADS)
-
 #define KERNEL_ITERS 8192
 
 // kernel0 + kernel1
@@ -34,18 +28,17 @@ static __inline__ unsigned long long rdtsc(void) {
 }
 
 int main(void) {
-
   // Set up data structures
   kernel_data_t *data;
   kernel_buffer_t *buffer;
   int thread_counts[6] = {1, 2, 4, 8, 16, 32};
 
   for (int t = 0; t < 6; t++) {
-    int NUM_THREADS = thread_counts[t];
+    int num_threads = thread_counts[t];
     posix_memalign((void **)&data, ALIGNMENT,
                    KERNEL_ITERS * sizeof(kernel_data_t));
     posix_memalign((void **)&buffer, ALIGNMENT,
-                   NUM_THREADS * sizeof(kernel_buffer_t));
+                   num_threads * sizeof(kernel_buffer_t));
 
     // Initialize data
     for (int i = 0; i < KERNEL_ITERS; i++) {
@@ -64,7 +57,7 @@ int main(void) {
     }
 
     // Initialize buffer
-    for (int i = 0; i < NUM_THREADS; i++) {
+    for (int i = 0; i < num_threads; i++) {
       for (int j = 0; j < NUM_SIMD_IN_KERNEL; j++) {
         for (int k = 0; k < SIMD_SIZE; k++) {
           buffer[i].buffer[j].partUx[k] = 0.0;
@@ -82,38 +75,32 @@ int main(void) {
       if (thread_counts[t] == 1) {
 
         for (int j = 0; j < KERNEL_ITERS; j++) {
-          // buff_idx = j/(KERNEL_ITERS/NUM_THREADS);
           t0 = rdtsc();
-          kernel0(&(data[j]), &buffer[0]);
-          kernel1(&(data[j]), &buffer[0]);
-          // printf("Test: %d, %d, %d\n", j, j/KERNEL_ITERS_PER_THREAD,
-          // KERNEL_ITERS);
+          vornoi_kernel0(&(data[j]), &buffer[0]);
+          vornoi_kernel1(&(data[j]), &buffer[0]);
           t1 = rdtsc();
           sum += (t1 - t0);
         }
       } else {
         t0 = rdtsc();
-#pragma omp parallel for private(buff_idx) num_threads(NUM_THREADS)            \
+#pragma omp parallel for private(buff_idx) num_threads(num_threads)            \
     reduction(+ : sum)
         for (int j = 0; j < KERNEL_ITERS; j++) {
-          buff_idx = j / (KERNEL_ITERS / NUM_THREADS);
-          kernel0(&(data[j]), &buffer[buff_idx]);
-          kernel1(&(data[j]), &buffer[buff_idx]);
-          // printf("Test: %d, %d, %d\n", j, j/KERNEL_ITERS_PER_THREAD,
-          // KERNEL_ITERS);
+          buff_idx = j / (KERNEL_ITERS / num_threads);
+          vornoi_kernel0(&(data[j]), &buffer[buff_idx]);
+          vornoi_kernel1(&(data[j]), &buffer[buff_idx]);
         }
         t1 = rdtsc();
         sum += (t1 - t0);
       }
     }
 
-    // printf("%d\n", OPS * KERNEL_ITERS);
     printf("Thread_count: %d, Wall time: %lld, Throughput: %lf, "
            "Iter_per_thread: %lf\n",
            thread_counts[t], sum,
            (OPS * KERNEL_ITERS) /
                ((double)(sum / RUNS) * (MAX_FREQ / BASE_FREQ)),
-           (double)KERNEL_ITERS / (double)NUM_THREADS);
+           (double)KERNEL_ITERS / (double)num_threads);
   }
 
   // Clean up
