@@ -5,9 +5,8 @@
 #include <omp.h>
 
 #include "globals.h"
-//#include "kernel1.h"
-#include "kernel2.h"
-unsigned long long tg0, tg1, tg_sum, tg0s, tg1s, tg_sums;
+#include "kernel.h"
+unsigned long long tg0, tg1, sum_check, tg0s, tg1s, sum_check_seq;
 
 static __inline__ unsigned long long rdtsc(void) {
   unsigned hi, lo;
@@ -45,7 +44,7 @@ void check
     
   }
   tg1 = rdtsc();
-  tg_sum += (tg1-tg0);
+  sum_check += (tg1-tg0);
  }
 
 void check_seq
@@ -76,7 +75,7 @@ void check_seq
     i = g*g + h*h;
     res[p] = a*(e*i - f*h) + b*(f*g - d*i) + c*(d*h - e*g);
     tg1s = rdtsc();
-    tg_sums += (tg1s-tg0s);
+    sum_check_seq += (tg1s-tg0s);
   }
  }
 
@@ -86,20 +85,19 @@ int main(){
   float *Bx, *By;
   float *Cx, *Cy;
   float *Dx, *Dy;
-  float *kernel1_out, *kernel2_out;
-  float *res;
+  float *kernel_out;
+  float *res, *res_seq;
 
   unsigned long long t0, t1, t2, t3, t4, t5, tp0, tp1;
   int NUM_THREADS = 1;
   int threads[10] = {1, 2, 4, 8, 12, 16, 20, 24, 32, 40};
   int elems[10] = {128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536};
-  unsigned long long sum_kernel2 = 0;
 
   for (int s=0; s<10; s++){
     for (int t=0; t<1; t++){
-      //int NUM_ELEMS = data_dim[t];
       int NUM_ELEMS = elems[s];
       NUM_THREADS = threads[t];
+
       //create memory aligned buffers
       posix_memalign((void**) &Ax, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
       posix_memalign((void**) &Ay, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
@@ -109,9 +107,9 @@ int main(){
       posix_memalign((void**) &Cy, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
       posix_memalign((void**) &Dx, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
       posix_memalign((void**) &Dy, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
-      posix_memalign((void**) &kernel1_out, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
+      posix_memalign((void**) &kernel_out, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
       posix_memalign((void**) &res, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
-      posix_memalign((void**) &kernel2_out, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
+      posix_memalign((void**) &res_seq, ALIGNMENT, NUM_ELEMS * SIMD_SIZE * sizeof(float));
 
       srand((unsigned int)time(NULL));
       float scale = 64;
@@ -139,80 +137,70 @@ int main(){
       }
       //initialize output
       for (int i = 0; i < NUM_ELEMS * SIMD_SIZE; i++){
-        kernel1_out[i] = 0.0;
-        kernel2_out[i] = 0.0;
+        kernel_out[i] = 0.0;
         res[i] = 0.0;
+        res_seq[i] = 0.0;
       }
 
-      unsigned long long sum_kernel1 = 0;
-      unsigned long long sum_kernel2 = 0;
-      unsigned long long sum_check = 0;
-      tg_sum = 0;
-      tg_sums = 0;
+      unsigned long long sum_kernel = 0;
+      sum_check = 0;
+      sum_check_seq = 0;
 
     for (int r = 0; r<RUNS; r++){
       int idx = 0;
-      //t0 = rdtsc();
       check(Ax, Ay, Bx, By, Cx, Cy, Dx[0], Dy[0], res, NUM_ELEMS);
-      //t1 = rdtsc();
     }
 
     for (int r = 0; r<RUNS; r++){
       int idx = 0;
-      //t0 = rdtsc();
-      check_seq(Ax, Ay, Bx, By, Cx, Cy, Dx[0], Dy[0], kernel1_out, NUM_ELEMS);
-      //t1 = rdtsc();
+      check_seq(Ax, Ay, Bx, By, Cx, Cy, Dx[0], Dy[0], res_seq, NUM_ELEMS);
     }
 
     for (int r = 0; r<RUNS; r++){
+      const int KERNEl_SIZE = 2*SIMD_SIZE;
 
-      const int KERNEl1_SIZE = 4*SIMD_SIZE;
-
-      // Run kernel sequential
-      //if (t==0){
+      // Run kernel single-threaded
       t2 = rdtsc();
       int idx = 0;
-      for (int p = 0; p < (int)((NUM_ELEMS*SIMD_SIZE)/KERNEl1_SIZE); p++){
-        idx = KERNEl1_SIZE*p;
-        kernel(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], Dx[0], Dy[0], &kernel2_out[idx]);
+      for (int p = 0; p < (int)((NUM_ELEMS*SIMD_SIZE)/KERNEl_SIZE); p++){
+        idx = KERNEl_SIZE*p;
+        kernel(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], Dx[0], Dy[0], &kernel_out[idx]);
       }
       t3 = rdtsc();
-      sum_kernel2 += (t3 - t2);
-        
-      //}
+      sum_kernel += (t3 - t2);
     }
 
       // for (int r = 0; r<RUNS; r++){
 
-      //   const int KERNEl1_SIZE = 4*SIMD_SIZE;
+      //   const int KERNEl_SIZE = 2*SIMD_SIZE;
 
       //   // Run kernel parallel
       //   int idx = 0;
       //   t0 = rdtsc();
-      //   #pragma omp parallel for private(idx) num_threads(NUM_THREADS) //reduction(+:sum_kernel1)
-      //   for (int p = 0; p < (int)((NUM_ELEMS*SIMD_SIZE)/KERNEl1_SIZE); p++){
+      //   #pragma omp parallel for private(idx) num_threads(NUM_THREADS)
+      //   for (int p = 0; p < (int)((NUM_ELEMS*SIMD_SIZE)/KERNEl_SIZE); p++){
       //     idx = KERNEl1_SIZE*p;
-      //     kernel2(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], &Dx[idx], &Dy[idx], &kernel1_out[idx]);
+      //     kernel(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], Dx[0], Dy[0], &kernel_out[idx]);
       //   }
       //   t1 = rdtsc();
-      //   sum_kernel1 += (t1 - t0); 
+      //   sum_kernel += (t1 - t0); 
       // }
 
       // Run correctness check
       int correct = 1;
       for (int i = 0; i != NUM_ELEMS * SIMD_SIZE; ++i) {
-        correct &= (fabs(kernel2_out[i] - res[i]) < 1e-13);
+        correct &= (fabs(kernel_out[i] - res[i]) < 1e-13);
       }
       
       printf("\n");
       printf("Num elems: %d\n", NUM_ELEMS);
       printf("Thread Count: %d\n", NUM_THREADS);
       printf("Correctness: %d \n", correct);
-      printf("Check cycles/RUNS: %llu, throughput: %lf\n", tg_sum / RUNS, (30*NUM_ELEMS*SIMD_SIZE) / ( (double)(tg_sum / RUNS) * (MAX_FREQ/BASE_FREQ) ));
-      printf("Check_seq cycles/RUNS: %llu, throughput: %lf\n", tg_sums / RUNS, (30*NUM_ELEMS*SIMD_SIZE) / ( (double)(tg_sums / RUNS) * (MAX_FREQ/BASE_FREQ) ));
-      printf("Kernel cycles/RUNS: %llu, throughput: %lf\n", sum_kernel2 / RUNS, (30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_kernel2 / RUNS) * (MAX_FREQ/BASE_FREQ) ));
-      printf("Speed-up: %f\n", (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_kernel2 / RUNS) * (MAX_FREQ/BASE_FREQ) )) / (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(tg_sum / RUNS) * (MAX_FREQ/BASE_FREQ) )));
-      printf("Speed-up_seq: %f\n\n", (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_kernel2 / RUNS) * (MAX_FREQ/BASE_FREQ) )) / (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(tg_sums / RUNS) * (MAX_FREQ/BASE_FREQ) )));
+      printf("Check cycles/RUNS: %llu, throughput: %lf\n", sum_check / RUNS, (30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_check / RUNS) * (MAX_FREQ/BASE_FREQ) ));
+      printf("Check_seq cycles/RUNS: %llu, throughput: %lf\n", sum_check_seq / RUNS, (30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_check_seq / RUNS) * (MAX_FREQ/BASE_FREQ) ));
+      printf("Kernel cycles/RUNS: %llu, throughput: %lf\n", sum_kernel / RUNS, (30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_kernel / RUNS) * (MAX_FREQ/BASE_FREQ) ));
+      printf("Speed-up: %f\n", (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_kernel / RUNS) * (MAX_FREQ/BASE_FREQ) )) / (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_check / RUNS) * (MAX_FREQ/BASE_FREQ) )));
+      printf("Speed-up_seq: %f\n\n", (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_kernel / RUNS) * (MAX_FREQ/BASE_FREQ) )) / (float)((30*NUM_ELEMS*SIMD_SIZE) / ( (double)(sum_check_seq / RUNS) * (MAX_FREQ/BASE_FREQ) )));
     }
   }
   // Clean up
@@ -224,8 +212,8 @@ int main(){
   free(Cy);
   free(Dx);
   free(Dy);
-  free(kernel1_out);
-  free(kernel2_out);
+  free(kernel_out);
+  free(res_seq);
   free(res);
 
   return 0;

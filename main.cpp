@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <chrono>
 #include <algorithm>
-#include "kernels/det3/kernel1.h"
+#include "kernels/det3/kernel.h"
 #include <omp.h>
 #include <cstring>
 #include "kernels/circumcenter/kernel.h"

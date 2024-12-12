@@ -1,21 +1,19 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <immintrin.h>
+#ifndef _DET3_KERNEL1_H_
+#define __DET3_KERNEL1_H_
 
-static const int SIMD_SIZE = 8;
-static const int KERNEL_SIZE = 2*SIMD_SIZE;
+#include <immintrin.h>
+#define SIMD_SIZE 8
 
 static inline void kernel_sub
 (
-  float*     Ax,
-  float*     Ay,
-  float*     Bx,
-  float*     By,
-  float*     Cx,
-  float*     Cy,
-  float     Dx,
-  float     Dy,
+  float*      Ax,
+  float*      Ay,
+  float*      Bx,
+  float*      By,
+  float*      Cx,
+  float*      Cy,
+  float               Dx,
+  float               Dy,
   __m256*      a,
   __m256*      b,
   __m256*      d,
@@ -33,20 +31,17 @@ static inline void kernel_sub
   reg3 = _mm256_load_ps(&By[0]);
   reg4 = _mm256_load_ps(&Cx[0]);
   reg5 = _mm256_load_ps(&Cy[0]);
-  // reg6 = _mm256_load_ps(&Dx[0]);
-  // reg7 = _mm256_load_ps(&Dy[0]);
-  reg6 = _mm256_set1_ps(Dx); 
+  reg6 = _mm256_set1_ps(Dx);
   reg7 = _mm256_set1_ps(Dy);
-
+  
   reg8  = _mm256_load_ps(&Ax[SIMD_SIZE]);
   reg9  = _mm256_load_ps(&Ay[SIMD_SIZE]);
   reg10 = _mm256_load_ps(&Bx[SIMD_SIZE]);
   reg11 = _mm256_load_ps(&By[SIMD_SIZE]);
   reg12 = _mm256_load_ps(&Cx[SIMD_SIZE]);
   reg13 = _mm256_load_ps(&Cy[SIMD_SIZE]);
-  // reg14 = _mm256_load_ps(&Dx[SIMD_SIZE]);
-  // reg15 = _mm256_load_ps(&Dy[SIMD_SIZE]);
 
+  __asm__ volatile("" ::: "memory");
   // Ax - Dx
   reg0 =   _mm256_sub_ps(reg0, reg6);
   reg8 =   _mm256_sub_ps(reg8, reg6);
@@ -65,6 +60,8 @@ static inline void kernel_sub
   // Cy - Dy
   reg5 =   _mm256_sub_ps(reg5, reg7);
   reg13 =  _mm256_sub_ps(reg13, reg7);
+
+  __asm__ volatile("" ::: "memory");
 
   // // Store a
   a[0] = reg0;
@@ -143,6 +140,8 @@ static inline void kernel_square_add
   // i = g^2 + h^2
   reg4 = _mm256_add_ps(reg4, reg5);
   reg10 = _mm256_add_ps(reg10, reg11);
+
+  __asm__ volatile("" ::: "memory");
 
   // Store c
   c[0] = reg0;
@@ -266,48 +265,45 @@ static inline void kernel_det2
 
 void kernel
 (
-  float*     Ax,
-  float*     Ay,
-  float*     Bx,
-  float*     By,
-  float*     Cx,
-  float*     Cy,
-  float     Dx,
-  float     Dy,
-  float*     det3_out,
-  int num_elems
+  float*      Ax,
+  float*      Ay,
+  float*      Bx,
+  float*      By,
+  float*      Cx,
+  float*      Cy,
+  float               Dx,
+  float               Dy,
+  float*      det3_out
 ){
   
   __m256 a[2], b[2], c[2], d[2], e[2], f[2], g[2], h[2], i[2], det2_out1[2], det2_out2[2], det2_out3[2];
   __m256 reg0, reg1, reg2, reg3, reg4, reg5;
   int idx = 0;
 
-  for (int idx = 0; idx < num_elems; idx += SIMD_SIZE * 2) {
-    // Part 1
-    kernel_sub(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx],
-               &Cx[idx], &Cy[idx], Dx, Dy,
-               a, b, d, e, g, h);
-    kernel_square_add(a, b, c, d, e, f, g, h, i);
-    kernel_det2(a, b, c, d, e, f, g, h, i, det2_out1, det2_out2, det2_out3);
+  // part 1
+  kernel_sub(Ax, Ay, Bx, By, Cx, Cy, Dx, Dy, \
+            a, b, d, e, g, h);
+  kernel_square_add(a, b, c, d, e, f, g, h, i);
+  kernel_det2(a, b, c, d, e, f, g, h, i, \
+              det2_out1, det2_out2, det2_out3);
 
-    // Part 2: Combine results
-    reg0 = det2_out1[0];
-    reg1 = det2_out1[1];
-    reg2 = det2_out2[0];
-    reg3 = det2_out2[1];
-    reg4 = det2_out3[0];
-    reg5 = det2_out3[1];
+  // part 2
+  reg0 = det2_out1[0];
+  reg1 = det2_out1[1];
+  reg2 = det2_out2[0];
+  reg3 = det2_out2[1];
+  reg4 = det2_out3[0];
+  reg5 = det2_out3[1];
 
-    reg0 = _mm256_add_ps(reg0, reg2);
-    reg1 = _mm256_add_ps(reg1, reg3);
-    reg0 = _mm256_add_ps(reg0, reg4);
-    reg1 = _mm256_add_ps(reg1, reg5);
+  reg0 = _mm256_add_ps(reg0, reg2);
+  reg1 = _mm256_add_ps(reg1, reg3);
+  reg0 = _mm256_add_ps(reg0, reg4);
+  reg1 = _mm256_add_ps(reg1, reg5);
 
-    if (idx < num_elems) {
-        _mm256_store_ps(&det3_out[idx], reg0);
-    }
-    if (idx + SIMD_SIZE < num_elems) {
-        _mm256_store_ps(&det3_out[idx + SIMD_SIZE], reg1);
-    }
-  }
+  // Store det3_out
+  _mm256_store_ps(&det3_out[0], reg0);
+  _mm256_store_ps(&det3_out[0+SIMD_SIZE], reg1);
+
 }
+
+#endif
