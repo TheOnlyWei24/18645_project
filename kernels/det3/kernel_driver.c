@@ -160,14 +160,16 @@ int main(){
       const int KERNEl_SIZE = 2*SIMD_SIZE;
 
       // Run kernel single-threaded
-      t2 = rdtsc();
+      
       int idx = 0;
       for (int p = 0; p < (int)((NUM_ELEMS*SIMD_SIZE)/KERNEl_SIZE); p++){
+        t2 = rdtsc();
         idx = KERNEl_SIZE*p;
         kernel(&Ax[idx], &Ay[idx], &Bx[idx], &By[idx], &Cx[idx], &Cy[idx], Dx[0], Dy[0], &kernel_out[idx]);
+        t3 = rdtsc();
+        sum_kernel += (t3 - t2);
       }
-      t3 = rdtsc();
-      sum_kernel += (t3 - t2);
+      
     }
 
       // for (int r = 0; r<RUNS; r++){

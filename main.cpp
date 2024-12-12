@@ -14,7 +14,7 @@
 
 #define SUPER_TRIANGLE_MAX 10000000
 
-#define NUM_TRIANGLES 4096
+#define NUM_TRIANGLES 131072
 
 #define NUM_ELEMS 256
 
@@ -524,5 +524,5 @@ int main(int argc, char **argv) {
     //auto tmp = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
     auto tmp = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
-    std::cout << "Vornoi time: " << tmp.count() << "ns" << std::endl;
+    std::cout << "Vornoi time: " << tmp.count() << "ms" << std::endl;
 }
