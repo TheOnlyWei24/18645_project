@@ -12,7 +12,7 @@
 
 #define RUNS 100000
 
-#define KERNEL_ITERS 1
+#define KERNEL_ITERS 128
 
 // kernel0 + kernel1
 // SIMD_SIZE * NUM_OPS * NUM ITER
@@ -66,6 +66,7 @@ int main(void) {
       t0 = rdtsc();
       vornoi_kernel0(&(data[j]), buffer);
       vornoi_kernel1(&(data[j]), buffer);
+      // vornoi_baseline(&(data[j]));
       t1 = rdtsc();
       sum += (t1 - t0);
     }

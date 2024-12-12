@@ -2,7 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-NUM_POINTS = 32000
+NUM_POINTS = 100
 MAX_VAL = 500000
 
 class Vertex:
@@ -246,22 +246,20 @@ if __name__ == '__main__':
     # Generate random points
     points_list = [Vertex(np.random.randint(0, MAX_VAL), np.random.randint(0, MAX_VAL)) for _ in range(0, NUM_POINTS)]
 
-    output_points_list(points_list)
+    # output_points_list(points_list)
 
     triangles = bowyerWatson(points_list)
 
     print(len(triangles))
 
-    #fig = plt.figure()
-    #ax = fig.add_subplot()
+    fig = plt.figure()
+    ax = fig.add_subplot()
 
-    #triangles = input_triangles_list()
+    print_delaunay(triangles, ax)
 
-    #print_delaunay(triangles, ax)
+    vornoi(triangles)
 
-    #vornoi(triangles)
+    print_vornoi(triangles, ax)
 
-    # print_vornoi(triangles, ax)
-
-    #plt.show()
+    plt.show()
 
