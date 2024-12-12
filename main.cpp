@@ -14,7 +14,7 @@
 
 #define SUPER_TRIANGLE_MAX 10000000
 
-#define NUM_TRIANGLES 32000
+#define NUM_TRIANGLES 4096
 
 #define NUM_ELEMS 256
 
@@ -22,12 +22,16 @@
 
 #define DET3_KERNEL_SIZE 2
 
-#define NUM_THREADS 1
+#define NUM_THREADS 2
 
 float* kernel_buffer0;
 float* kernel_buffer1;
 float* kernel_buffer2;
 float* kernel_buffer3;
+float* kernel_buffer4;
+float* kernel_buffer5;
+float* kernel_buffer6;
+float* kernel_buffer7;
 
 
 struct Vertex {
@@ -171,9 +175,7 @@ typedef struct packed_delaunay_points packed_delaunay_points_t;
 void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, packed_delaunay_points_t* packedData, float* det3_out) {
     size_t numTriangles = triangles.size();
     size_t numKernelIter = (numTriangles + (SIMD_SIZE*DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE*DET3_KERNEL_SIZE); // Correct rounding
-    //printf("numKernelIter: %d\n", numKernelIter);
     if (numKernelIter<=32){
-        //printf("tri: %d, iter: %d\n", numTriangles, numKernelIter);
         float* buffer;
         buffer = kernel_buffer0;
         buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+1] = vertex.x;
@@ -210,30 +212,78 @@ void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, 
         }
     }
     else{
-        #pragma omp parallel num_threads(4)
+        #pragma omp parallel num_threads(NUM_THREADS)
         {
             int thread_id = omp_get_thread_num();
             size_t start, end;
             float* buffer;
 
-            // Divide the iterations between the 4 threads
+            // Divide the iterations between the 2 threads
             if (thread_id == 0) {
                 start = 0;
-                end = numKernelIter / 4;
+                end = numKernelIter / 2;
                 buffer = kernel_buffer0;
             } else if (thread_id == 1) {
-                start = numKernelIter / 4;
-                end = numKernelIter / 2;
-                buffer = kernel_buffer1;
-            } else if (thread_id == 2) {
                 start = numKernelIter / 2;
-                end = 3 * numKernelIter / 4;
-                buffer = kernel_buffer2;
-            } else if (thread_id == 3) {
-                start = 3 * numKernelIter / 4;
                 end = numKernelIter;
-                buffer = kernel_buffer3;
+                buffer = kernel_buffer1;
             }
+
+            // Divide the iterations between the 4 threads
+            // if (thread_id == 0) {
+            //     start = 0;
+            //     end = numKernelIter / 4;
+            //     buffer = kernel_buffer0;
+            // } else if (thread_id == 1) {
+            //     start = numKernelIter / 4;
+            //     end = numKernelIter / 2;
+            //     buffer = kernel_buffer1;
+            // } else if (thread_id == 2) {
+            //     start = numKernelIter / 2;
+            //     end = 3 * numKernelIter / 4;
+            //     buffer = kernel_buffer2;
+            // } else if (thread_id == 3) {
+            //     start = 3 * numKernelIter / 4;
+            //     end = numKernelIter;
+            //     buffer = kernel_buffer3;
+            // }
+
+            // Divide the iterations between the 8 threads
+            // if (thread_id == 0) {
+            //     start = 0;
+            //     end = numKernelIter / 8;
+            //     buffer = kernel_buffer0;
+            // } else if (thread_id == 1) {
+            //     start = numKernelIter / 8;
+            //     end = numKernelIter / 4;
+            //     buffer = kernel_buffer1;
+            // } else if (thread_id == 2) {
+            //     start = numKernelIter / 4;
+            //     end = 3 * numKernelIter / 8;
+            //     buffer = kernel_buffer2;
+            // } else if (thread_id == 3) {
+            //     start = 3 * numKernelIter / 8;
+            //     end = numKernelIter / 2;
+            //     buffer = kernel_buffer3;
+            // } else if (thread_id == 4) {
+            //     start = numKernelIter / 2;
+            //     end = 5 * numKernelIter / 8;
+            //     buffer = kernel_buffer4;
+            // } else if (thread_id == 5) {
+            //     start = 5 * numKernelIter / 8;
+            //     end = 3 * numKernelIter / 4;
+            //     buffer = kernel_buffer5;
+            // } else if (thread_id == 6) {
+            //     start = 3 * numKernelIter / 4;
+            //     end = 7 * numKernelIter / 8;
+            //     buffer = kernel_buffer6;
+            // } else if (thread_id == 7) {
+            //     start = 7 * numKernelIter / 8;
+            //     end = numKernelIter;
+            //     buffer = kernel_buffer7;
+            // }
+
+
             buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+1] = vertex.x;
             buffer[SIMD_SIZE*DET3_KERNEL_SIZE*6+2] = vertex.y;
             for (size_t i = start; i < end; i++){
@@ -246,7 +296,7 @@ void packDelaunay(const std::vector<Triangle>& triangles, const Vertex& vertex, 
                         buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*3] = triangles[currentTriangle].v1.y;
                         buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*4] = triangles[currentTriangle].v2.x;
                         buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE*5] = triangles[currentTriangle].v2.y;
-                } 
+                    } 
                     else{
                         buffer[j]    = 0.0;
                         buffer[j+SIMD_SIZE*DET3_KERNEL_SIZE]  = 0.0;
@@ -276,30 +326,12 @@ std::vector<Triangle> addVertex(Vertex& vertex, std::vector<Triangle>& triangles
     std::unordered_set<Edge, EdgeHash> unique_edges; 
     std::vector<Triangle> filtered_triangles;
 
-    // Pack delaunay data
+    // Pack delaunay data and run kernel
     packDelaunay(triangles, vertex, packedData, det3_out);
-
-    // int kernelIter = (triangles.size() + (SIMD_SIZE * DET3_KERNEL_SIZE) - 1) / (SIMD_SIZE * DET3_KERNEL_SIZE);
-    // float x = vertex.x;
-    // float y = vertex.y;
-
-    // #pragma omp parallel for num_threads(4) schedule(static)
-    // for (int i = 0; i < kernelIter; i++){
-    //     kernel( (packedData->packedPoints[i].Ax),
-    //             (packedData->packedPoints[i].Ay),
-    //             (packedData->packedPoints[i].Bx),
-    //             (packedData->packedPoints[i].By),
-    //             (packedData->packedPoints[i].Cx),
-    //             (packedData->packedPoints[i].Cy),
-    //             x, // Dx
-    //             y, // Dy
-    //             &det3_out[DET3_KERNEL_SIZE * SIMD_SIZE*i]);
-    // }
 
     // Process triangles and collect edges
     int t = 0;
     for (Triangle& triangle : triangles) {
-
         if (det3_out[t] > 0) {
         //if (triangle.inCircumcircle(vertex)) {
             // Add edges of the triangle to the unique edges set
@@ -340,6 +372,10 @@ std::vector<Triangle> bowyerWatson(std::vector<Vertex>& points) {
     posix_memalign((void**) &kernel_buffer1, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
     posix_memalign((void**) &kernel_buffer2, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
     posix_memalign((void**) &kernel_buffer3, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
+    posix_memalign((void**) &kernel_buffer4, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
+    posix_memalign((void**) &kernel_buffer5, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
+    posix_memalign((void**) &kernel_buffer6, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
+    posix_memalign((void**) &kernel_buffer7, ALIGNMENT, (SIMD_SIZE*DET3_KERNEL_SIZE*6+2) * sizeof(float));
 
     // Triangulate each vertex
     for (Vertex& vertex : points) {
